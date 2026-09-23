@@ -60,20 +60,20 @@ uv run python3 create_map_poster.py -c "Bengaluru" -C "India" -dc "बेंग�
 
 # 5. Resolution Guide Variations
 echo "--- Resolution Guide Variations ---"
-echo "Instagram Post (3.6x3.6)"
-uv run python3 create_map_poster.py -c "Bengaluru" -C "India" -W 3.6 -H 3.6
+echo "Instagram Post (91.4x91.4 mm)"
+uv run python3 create_map_poster.py -c "Bengaluru" -C "India" --width 91.4 --height 91.4
 
-echo "Mobile Wallpaper (3.6x6.4)"
-uv run python3 create_map_poster.py -c "Bengaluru" -C "India" -W 3.6 -H 6.4
+echo "Mobile Wallpaper (91.4x162.6 mm)"
+uv run python3 create_map_poster.py -c "Bengaluru" -C "India" --width 91.4 --height 162.6
 
-echo "HD Wallpaper (6.4x3.6)"
-uv run python3 create_map_poster.py -c "Bengaluru" -C "India" -W 6.4 -H 3.6
+echo "HD Wallpaper (162.6x91.4 mm)"
+uv run python3 create_map_poster.py -c "Bengaluru" -C "India" --width 162.6 --height 91.4
 
-echo "4K Wallpaper (12.8x7.2)"
-uv run python3 create_map_poster.py -c "Bengaluru" -C "India" -W 12.8 -H 7.2
+echo "4K Wallpaper (325.1x182.9 mm)"
+uv run python3 create_map_poster.py -c "Bengaluru" -C "India" --width 325.1 --height 182.9
 
-echo "A4 Print (8.3x11.7)"
-uv run python3 create_map_poster.py -c "Bengaluru" -C "India" -W 8.3 -H 11.7
+echo "A4 Print (210x297 mm)"
+uv run python3 create_map_poster.py -c "Bengaluru" -C "India" --width 210 --height 297
 
 # 6. Distance Guide Variations
 echo "--- Distance Guide Variations ---"
@@ -89,10 +89,10 @@ uv run python3 create_map_poster.py -c "Bengaluru" -C "India" -d 18000
 # 7. Pen Plotter Output
 echo "--- Pen Plotter Output ---"
 echo "A3 plotter SVG, 0.3mm pen"
-uv run python3 create_map_poster.py -c "Bengaluru" -C "India" -d 5000 --format plotter --width-mm 297 --height-mm 420 --pen-width 0.3
+uv run python3 create_map_poster.py -c "Bengaluru" -C "India" -d 5000 --format plotter --width 297 --height 420 --pen-width 0.3
 
 echo "Plotter SVG, 0.5mm pen with sparse hatching"
-uv run python3 create_map_poster.py -c "Bengaluru" -C "India" -d 5000 --format plotter --width-mm 300 --height-mm 400 --pen-width 0.5 --hatch-spacing 1.5
+uv run python3 create_map_poster.py -c "Bengaluru" -C "India" -d 5000 --format plotter --width 300 --height 400 --pen-width 0.5 --hatch-spacing 1.5
 
 # 8. Utility flags
 echo "--- Utility Flags ---"

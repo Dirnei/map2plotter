@@ -19,9 +19,8 @@ from shapely import affinity
 from shapely.geometry import LineString, MultiLineString, Polygon, box
 from shapely.ops import linemerge, unary_union
 
-MM_PER_INCH = 25.4
-MM_PER_PT = MM_PER_INCH / 72
-REFERENCE_SIZE_MM = 12 * MM_PER_INCH  # Layout reference: 12 inch poster
+MM_PER_PT = 25.4 / 72  # Typographic point
+REFERENCE_SIZE_MM = 304.8  # Shorter poster side at which the base font sizes and road widths apply
 
 WATER_HATCH_ANGLE = 45
 PARKS_HATCH_ANGLE = -45

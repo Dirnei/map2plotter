@@ -44,9 +44,32 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+### With Docker Compose (web interface)
+
+```bash
+docker compose up -d        # builds the image and serves http://localhost:8000/
+docker compose down         # stop
+```
+
+Posters are saved to `./posters` and map data is cached in `./cache`. To use another host port, run `MAPTOPOSTER_PORT=9000 docker compose up -d`. To preselect an OpenStreetMap server, run e.g. `OVERPASS_URL=https://lz4.overpass-api.de/api docker compose up -d` (see [OpenStreetMap Servers](#openstreetmap-servers)). The compose file publishes the port on `127.0.0.1` only, because the web interface has no authentication.
+
+To use the CLI with the same image and volumes:
+
+```bash
+docker compose run --rm maptoposter --city "Paris" --country "France"
+```
+
 ### With Docker
 
-Run with docker:
+With no arguments the container starts the web interface. With `--options` it runs the CLI:
+
+```bash
+# Web interface on http://localhost:8000/
+docker run --rm -p 127.0.0.1:8000:8000 -v $(pwd)/posters:/app/posters -v $(pwd)/cache:/app/cache \
+  ghcr.io/originalankur/maptoposter:latest
+```
+
+Run the CLI with docker:
 
 ```bash
 # Basic usage
@@ -91,6 +114,29 @@ Otherwise (pip + venv):
 python create_map_poster.py --city <city> --country <country> [options]
 ```
 
+### Web Interface
+
+Rather than typing CLI flags, you can configure a poster in your browser:
+
+```bash
+python web_app.py              # then open http://127.0.0.1:8000/
+python web_app.py --port 9000  # use another port
+```
+
+The page lets you:
+- set every option in one form, pick a theme by its colour swatches, and see the pen plotter options when that format is selected
+- choose the OpenStreetMap server (or automatic fallback) and check which servers are up
+- watch the generator's output live and cancel a running job
+- copy the exact `create_map_poster.py` command it ran
+- preview and download the finished poster(s)
+- browse everything in `posters/`
+
+It runs one job at a time.
+
+With Docker, run `docker compose up -d` or start the container without arguments (see [With Docker Compose](#with-docker-compose-web-interface)).
+
+> **Note:** the web interface has no authentication. By default it only listens on `127.0.0.1`. Use `--host 0.0.0.0` (or publish the container port on all interfaces) only on a trusted network, because anyone who can reach the port can start generation jobs and download posters.
+
 ### Required Options
 
 | Option | Short | Description |
@@ -109,9 +155,21 @@ python create_map_poster.py --city <city> --country <country> [options]
 | **OPTIONAL:** `--distance` | `-d` | Map radius in meters | 18000 |
 | **OPTIONAL:** `--list-themes` | | List all available themes | |
 | **OPTIONAL:** `--all-themes` | | Generate posters for all available themes | |
-| **OPTIONAL:** `--width` | `-W` | Image width in inches | 12 (max: 20) |
-| **OPTIONAL:** `--height` | `-H` | Image height in inches | 16 (max: 20) |
+| **OPTIONAL:** `--width` | `-W` | Poster width in mm | 300 (max: 500, no limit for plotter) |
+| **OPTIONAL:** `--height` | `-H` | Poster height in mm | 400 (max: 500, no limit for plotter) |
 | **OPTIONAL:** `--format` | `-f` | Output format: `png`, `svg`, `pdf` or `plotter` | png |
+| **OPTIONAL:** `--overpass-url` | | OpenStreetMap (Overpass API) server URL, or `auto` | `$OVERPASS_URL` or `auto` |
+
+### OpenStreetMap Servers
+
+Street, water and park data come from the public Overpass API, which is sometimes overloaded or down. By default (`--overpass-url auto`) the generator:
+1. checks the known public servers in parallel;
+2. downloads from the first one that answered;
+3. falls back to the next server if a download fails. It gives up on a server that keeps answering "busy" (429/504) after 3 attempts.
+
+To use one specific server, pass it with `--overpass-url` or set the `OVERPASS_URL` environment variable, e.g. `--overpass-url https://lz4.overpass-api.de/api`. Both the `/api` base URL and the full `/api/interpreter` URL work. Known public servers are `overpass-api.de`, `lz4.overpass-api.de`, `z.overpass-api.de`, `maps.mail.ru/osm/tools/overpass`, `overpass.private.coffee` and `overpass.kumi.systems`.
+
+In the web interface, the **Map data** section has a dropdown for the server and a **Check servers** button that shows which servers answer right now.
 
 ### Pen Plotter Output
 
@@ -120,8 +178,8 @@ python create_map_poster.py --city <city> --country <country> [options]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--pen-width` | Pen (stroke) width in mm. Wide roads get as many parallel strokes as they need, and hatch spacing is based on this | 0.3 |
-| `--width-mm` | Final poster width in mm | `--width` × 25.4 |
-| `--height-mm` | Final poster height in mm | `--height` × 25.4 |
+| `--width` | Final poster width in mm (same option as for the other formats) | 300 |
+| `--height` | Final poster height in mm (same option as for the other formats) | 400 |
 | `--hatch-spacing` | Distance between hatch lines for water and parks, in mm (must be ≥ pen width) | pen width |
 
 How the poster is turned into pen paths:
@@ -132,10 +190,10 @@ How the poster is turned into pen paths:
 
 ```bash
 # A3 portrait poster for a 0.3 mm fineliner
-python create_map_poster.py -c "Venice" -C "Italy" -d 3000 --format plotter --width-mm 297 --height-mm 420 --pen-width 0.3
+python create_map_poster.py -c "Venice" -C "Italy" -d 3000 --format plotter --width 297 --height 420 --pen-width 0.3
 
 # Thicker pen with sparser hatching for faster plots
-python create_map_poster.py -c "Paris" -C "France" --format plotter --width-mm 300 --height-mm 400 --pen-width 0.5 --hatch-spacing 1.5
+python create_map_poster.py -c "Paris" -C "France" --format plotter --width 300 --height 400 --pen-width 0.5 --hatch-spacing 1.5
 ```
 
 **Tip:** paths are already sorted to keep pen-up travel short. To optimise further, post-process the file with [vpype](https://github.com/abey79/vpype), which keeps the layers:
@@ -171,15 +229,15 @@ python create_map_poster.py -c "Dubai" -C "UAE" -dc "دبي" -dC "الإمارا
 
 ### Resolution Guide (300 DPI)
 
-Use these values for `-W` and `-H` to target specific resolutions:
+PNG output is rendered at 300 DPI. Use these values for `--width` and `--height` to target specific resolutions:
 
-| Target | Resolution (px) | Inches (-W / -H) |
+| Target | Resolution (px) | Size in mm (`--width` / `--height`) |
 |--------|-----------------|------------------|
-| **Instagram Post** | 1080 x 1080 | 3.6 x 3.6 |
-| **Mobile Wallpaper** | 1080 x 1920 | 3.6 x 6.4 |
-| **HD Wallpaper** | 1920 x 1080 | 6.4 x 3.6 |
-| **4K Wallpaper** | 3840 x 2160 | 12.8 x 7.2 |
-| **A4 Print** | 2480 x 3508 | 8.3 x 11.7 |
+| **Instagram Post** | 1080 x 1080 | 91.4 x 91.4 |
+| **Mobile Wallpaper** | 1080 x 1920 | 91.4 x 162.6 |
+| **HD Wallpaper** | 1920 x 1080 | 162.6 x 91.4 |
+| **4K Wallpaper** | 3840 x 2160 | 325.1 x 182.9 |
+| **A4 Print** | 2480 x 3508 | 210 x 297 |
 
 ### Examples
 

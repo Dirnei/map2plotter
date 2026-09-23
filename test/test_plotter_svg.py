@@ -236,8 +236,8 @@ def test_write_svg_structure(tmp_path):
         assert g.get("fill") == "none"
 
 
-def test_size_from_inches_formatting(tmp_path):
-    settings = ps.PlotterSettings(12 * 25.4, 16 * 25.4, 0.3, 0.3)
+def test_fractional_mm_size_formatting(tmp_path):
+    settings = ps.PlotterSettings(304.8, 406.4, 0.3, 0.3)
     out = tmp_path / "t.svg"
     ps.write_svg(out, [], settings)
     root = _parse(out)

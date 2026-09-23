@@ -1,0 +1,31 @@
+# Map Poster Generator: web interface at http://localhost:8000/
+#
+#   docker compose up -d                  # build (first time) and start
+#   docker compose logs -f                # follow logs
+#   docker compose down                   # stop
+#
+# Run the CLI with the same image and volumes:
+#   docker compose run --rm maptoposter --city Paris --country France
+#
+# Set MAPTOPOSTER_PORT to use another host port, e.g. MAPTOPOSTER_PORT=9000 docker compose up -d
+
+services:
+  maptoposter:
+    build: .
+    image: maptoposter:latest
+    ports:
+      # Bound to localhost only: the web interface has no authentication.
+      # Change to "${MAPTOPOSTER_PORT:-8000}:8000" to expose it on your network (trusted networks only).
+      - "127.0.0.1:${MAPTOPOSTER_PORT:-8001}:8000"
+    volumes:
+      - ./posters:/app/posters
+      - ./cache:/app/cache
+      - font-cache:/app/fonts/cache
+    environment:
+      # OpenStreetMap server preselected in the web UI and used by the CLI:
+      # "auto" (health check + fallback) or an Overpass URL, e.g. https://lz4.overpass-api.de/api
+      - OVERPASS_URL=${OVERPASS_URL:-auto}
+    restart: unless-stopped
+
+volumes:
+  font-cache:

@@ -21,23 +21,27 @@ The CLI SHALL accept `plotter` as a value of `--format`. When it is selected, th
 - **WHEN** the user runs with `--format plotter --all-themes`
 - **THEN** one plotter SVG is written per theme
 
-### Requirement: Physical size in millimetres
-The CLI SHALL accept `--width-mm` and `--height-mm` (positive numbers). The plotter SVG root element SHALL declare `width` and `height` in `mm` units that match these values. Its `viewBox` SHALL be `0 0 <width-mm> <height-mm>`, so that one user unit equals one millimetre. If the mm options are omitted, the size SHALL be derived from `--width`/`--height` (inches × 25.4). The map SHALL be cropped to the aspect ratio of the configured size.
+### Requirement: Poster size in millimetres
+The CLI SHALL accept `--width` and `--height` (short forms `-W`/`-H`) as the poster size in millimetres. Both must be positive numbers, and they default to 300 and 400. The plotter SVG root element SHALL declare `width` and `height` in `mm` units that match these values. Its `viewBox` SHALL be `0 0 <width> <height>`, so that one user unit equals one millimetre. No other size unit SHALL be accepted. The map SHALL be cropped to the aspect ratio of the configured size.
 
 #### Scenario: Explicit mm size
-- **WHEN** the user passes `--format plotter --width-mm 300 --height-mm 400`
+- **WHEN** the user passes `--format plotter --width 300 --height 400`
 - **THEN** the SVG root has `width="300mm"`, `height="400mm"` and `viewBox="0 0 300 400"`
 
-#### Scenario: Size derived from inches
-- **WHEN** the user passes `--format plotter --width 12 --height 16` without mm options
-- **THEN** the SVG root has `width="304.8mm"` and `height="406.4mm"`
+#### Scenario: Default size
+- **WHEN** the user passes `--format plotter` without size options
+- **THEN** the SVG root has `width="300mm"` and `height="400mm"`
+
+#### Scenario: Large format not limited
+- **WHEN** the user passes `--format plotter --width 841 --height 1189`
+- **THEN** the SVG root has `width="841mm"` and `height="1189mm"`
 
 #### Scenario: All geometry inside the page
 - **WHEN** a plotter SVG is generated
-- **THEN** every path coordinate lies within `[0, width-mm] × [0, height-mm]`
+- **THEN** every path coordinate lies within `[0, width] × [0, height]`
 
 #### Scenario: Invalid size rejected
-- **WHEN** the user passes `--width-mm 0` or a negative value
+- **WHEN** the user passes `--width 0` or a negative value
 - **THEN** the tool prints an error and exits with a non-zero status without writing a file
 
 ### Requirement: Configurable pen width

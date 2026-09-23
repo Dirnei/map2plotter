@@ -26,9 +26,11 @@ from geopandas import GeoDataFrame
 from geopy.geocoders import Nominatim
 from lat_lon_parser import parse
 from font_management import load_fonts
+import overpass_servers
 import plotter_svg
 from matplotlib.font_manager import FontProperties
 from networkx import MultiDiGraph
+from osmnx._errors import InsufficientResponseError
 from shapely.geometry import Point
 from tqdm import tqdm
 
@@ -43,13 +45,22 @@ CACHE_DIR_PATH = os.environ.get("CACHE_DIR", "cache")
 CACHE_DIR = Path(CACHE_DIR_PATH)
 CACHE_DIR.mkdir(exist_ok=True)
 
+# OpenStreetMap server: 'auto' (health check + fallback) or an Overpass API base URL
+OVERPASS_CHOICE = overpass_servers.AUTO
+_overpass_order = None  # Servers to try, resolved on the first download
+
 THEMES_DIR = "themes"
 FONTS_DIR = "fonts"
 POSTERS_DIR = "posters"
 
 FONTS = load_fonts()
 
-# Base font sizes in points (at 12 inches width)
+# Poster size in mm
+DEFAULT_WIDTH_MM = 300
+DEFAULT_HEIGHT_MM = 400
+MAX_SIZE_MM = 500  # Limit for png/svg/pdf output; plotter output is not limited
+
+# Base font sizes in points (at the reference size plotter_svg.REFERENCE_SIZE_MM)
 BASE_MAIN = 60
 BASE_SUB = 22
 BASE_COORDS = 14
@@ -411,7 +422,24 @@ def get_crop_limits(g_proj, center_lat_lon, aspect, dist):
     )
 
 
-def fetch_graph(point, dist) -> MultiDiGraph | None:
+def overpass_download(call):
+    """
+    Run an OSMnx download against the configured OpenStreetMap server(s).
+
+    In 'auto' mode the servers are health-checked once, then tried in order with
+    fallback. Messages go through tqdm.write so the progress bar cannot hide them.
+    """
+    global _overpass_order
+    if _overpass_order is None:
+        overpass_servers.limit_retries(log=tqdm.write)
+        _overpass_order = overpass_servers.candidates(OVERPASS_CHOICE, log=tqdm.write)
+    result, url = overpass_servers.run(call, _overpass_order, log=tqdm.write)
+    # Keep using the server that answered for the remaining downloads
+    _overpass_order = [url] + [u for u in _overpass_order if u != url]
+    return result
+
+
+def fetch_graph(point, dist) -> MultiDiGraph:
     """
     Fetch street network graph from OpenStreetMap.
 
@@ -423,7 +451,10 @@ def fetch_graph(point, dist) -> MultiDiGraph | None:
         dist: Distance in meters from center point
 
     Returns:
-        MultiDiGraph of street network, or None if fetch fails
+        MultiDiGraph of street network
+
+    Raises:
+        RuntimeError: If the street network cannot be downloaded (message includes the cause)
     """
     lat, lon = point
     graph = f"graph_{lat}_{lon}_{dist}"
@@ -433,17 +464,20 @@ def fetch_graph(point, dist) -> MultiDiGraph | None:
         return cast(MultiDiGraph, cached)
 
     try:
-        g = ox.graph_from_point(point, dist=dist, dist_type='bbox', network_type='all', truncate_by_edge=True)
-        # Rate limit between requests
-        time.sleep(0.5)
-        try:
-            cache_set(graph, g)
-        except CacheError as e:
-            print(e)
-        return g
+        g = overpass_download(
+            lambda: ox.graph_from_point(point, dist=dist, dist_type='bbox', network_type='all', truncate_by_edge=True)
+        )
+    except overpass_servers.OverpassError as e:
+        raise RuntimeError(f"Failed to retrieve street network data from OpenStreetMap: {e}") from e
     except Exception as e:
-        print(f"OSMnx error while fetching graph: {e}")
-        return None
+        raise RuntimeError(f"Failed to retrieve street network data: {e}") from e
+    # Rate limit between requests
+    time.sleep(0.5)
+    try:
+        cache_set(graph, g)
+    except CacheError as e:
+        print(e)
+    return g
 
 
 def fetch_features(point, dist, tags, name) -> GeoDataFrame | None:
@@ -471,17 +505,20 @@ def fetch_features(point, dist, tags, name) -> GeoDataFrame | None:
         return cast(GeoDataFrame, cached)
 
     try:
-        data = ox.features_from_point(point, tags=tags, dist=dist)
-        # Rate limit between requests
-        time.sleep(0.3)
-        try:
-            cache_set(features, data)
-        except CacheError as e:
-            print(e)
-        return data
-    except Exception as e:
-        print(f"OSMnx error while fetching features: {e}")
+        data = overpass_download(lambda: ox.features_from_point(point, tags=tags, dist=dist))
+    except InsufficientResponseError:
+        tqdm.write(f"  No {name} in this area")
         return None
+    except Exception as e:
+        tqdm.write(f"⚠ Could not download {name} ({e}); the poster is drawn without them")
+        return None
+    # Rate limit between requests
+    time.sleep(0.3)
+    try:
+        cache_set(features, data)
+    except CacheError as e:
+        print(e)
+    return data
 
 
 def format_city_title(display_city, scale_factor):
@@ -568,8 +605,8 @@ def create_poster(
     dist,
     output_file,
     output_format,
-    width=12,
-    height=16,
+    width_mm=DEFAULT_WIDTH_MM,
+    height_mm=DEFAULT_HEIGHT_MM,
     country_label=None,
     name_label=None,
     display_city=None,
@@ -590,8 +627,8 @@ def create_poster(
         dist: Map radius in meters
         output_file: Path where poster will be saved
         output_format: File format ('png', 'svg', 'pdf', or 'plotter')
-        width: Poster width in inches (default: 12)
-        height: Poster height in inches (default: 16)
+        width_mm: Poster width in mm (default: 300, CLI --width)
+        height_mm: Poster height in mm (default: 400, CLI --height)
         country_label: Optional override for country text on poster
         _name_label: Optional override for city name (unused, reserved for future use)
         plotter_settings: plotter_svg.PlotterSettings, required for the 'plotter' format
@@ -615,7 +652,8 @@ def create_poster(
     ) as pbar:
         # 1. Fetch Street Network
         pbar.set_description("Downloading street network")
-        compensated_dist = dist * (max(height, width) / min(height, width)) / 4  # To compensate for viewport crop
+        # To compensate for viewport crop
+        compensated_dist = dist * (max(height_mm, width_mm) / min(height_mm, width_mm)) / 4
         g = fetch_graph(point, compensated_dist)
         if g is None:
             raise RuntimeError("Failed to retrieve street network data.")
@@ -652,7 +690,8 @@ def create_poster(
 
     # 2. Setup Plot
     print("Rendering map...")
-    fig, ax = plt.subplots(figsize=(width, height), facecolor=THEME["bg"])
+    # matplotlib sizes figures in inches
+    fig, ax = plt.subplots(figsize=(width_mm / 25.4, height_mm / 25.4), facecolor=THEME["bg"])
     ax.set_facecolor(THEME["bg"])
     ax.set_position((0.0, 0.0, 1.0, 1.0))
 
@@ -707,9 +746,9 @@ def create_poster(
     create_gradient_fade(ax, THEME['gradient_color'], location='bottom', zorder=10)
     create_gradient_fade(ax, THEME['gradient_color'], location='top', zorder=10)
 
-    # Calculate scale factor based on smaller dimension (reference 12 inches)
+    # Calculate scale factor based on smaller dimension relative to the reference size
     # This ensures text scales properly for both portrait and landscape orientations
-    scale_factor = min(height, width) / 12.0
+    scale_factor = min(height_mm, width_mm) / plotter_svg.REFERENCE_SIZE_MM
 
     # 4. Typography - use custom fonts if provided, otherwise use default FONTS
     active_fonts = fonts or FONTS
@@ -814,11 +853,8 @@ def create_poster(
     print(f"Saving to {output_file}...")
 
     fmt = output_format.lower()
-    save_kwargs = dict(
-        facecolor=THEME["bg"],
-        bbox_inches="tight",
-        pad_inches=0.05,
-    )
+    # Save the full figure so the output is exactly --width x --height mm
+    save_kwargs = dict(facecolor=THEME["bg"])
 
     # DPI matters mainly for raster formats
     if fmt == "png":
@@ -868,7 +904,7 @@ Examples:
   python create_map_poster.py -c "Budapest" -C "Hungary" -t copper_patina -d 8000  # Danube split
 
   # Pen plotter SVG (A3, 0.3 mm pen)
-  python create_map_poster.py -c "Venice" -C "Italy" -d 3000 -f plotter --width-mm 297 --height-mm 420
+  python create_map_poster.py -c "Venice" -C "Italy" -d 3000 -f plotter -W 297 -H 420
 
   # List themes
   python create_map_poster.py --list-themes
@@ -881,10 +917,11 @@ Options:
   --all-themes      Generate posters for all themes
   --distance, -d    Map radius in meters (default: 18000)
   --list-themes     List all available themes
+  --width, -W       Poster width in mm (default: 300)
+  --height, -H      Poster height in mm (default: 400)
   --format, -f      Output format: png, svg, pdf or plotter (default: png)
+  --overpass-url    OpenStreetMap server URL or 'auto' (default: $OVERPASS_URL or auto)
   --pen-width       Plotter pen width in mm (default: 0.3)
-  --width-mm        Plotter output width in mm (default: --width in mm)
-  --height-mm       Plotter output height in mm (default: --height in mm)
   --hatch-spacing   Plotter hatch spacing for water/parks in mm (default: pen width)
 
 Distance guide:
@@ -933,7 +970,7 @@ Examples:
   python create_map_poster.py --city "New York" --country "USA" -l 40.776676 -73.971321 --theme neon_cyberpunk
   python create_map_poster.py --city Tokyo --country Japan --theme midnight_blue
   python create_map_poster.py --city Paris --country France --theme noir --distance 15000
-  python create_map_poster.py --city Venice --country Italy --format plotter --width-mm 297 --height-mm 420
+  python create_map_poster.py --city Venice --country Italy --format plotter --width 297 --height 420
   python create_map_poster.py --list-themes
         """,
     )
@@ -985,15 +1022,15 @@ Examples:
         "--width",
         "-W",
         type=float,
-        default=12,
-        help="Image width in inches (default: 12, max: 20 )",
+        default=DEFAULT_WIDTH_MM,
+        help=f"Poster width in mm (default: {DEFAULT_WIDTH_MM}, max: {MAX_SIZE_MM} except for plotter)",
     )
     parser.add_argument(
         "--height",
         "-H",
         type=float,
-        default=16,
-        help="Image height in inches (default: 16, max: 20)",
+        default=DEFAULT_HEIGHT_MM,
+        help=f"Poster height in mm (default: {DEFAULT_HEIGHT_MM}, max: {MAX_SIZE_MM} except for plotter)",
     )
     parser.add_argument(
         "--list-themes", action="store_true", help="List all available themes"
@@ -1023,20 +1060,16 @@ Examples:
         help="Output format for the poster (default: png). 'plotter' writes a pen-plotter-ready SVG",
     )
     parser.add_argument(
+        "--overpass-url",
+        default=os.environ.get("OVERPASS_URL", overpass_servers.AUTO),
+        help="OpenStreetMap (Overpass API) server, e.g. https://lz4.overpass-api.de/api, or 'auto' to check "
+             "the known servers and fall back automatically (default: $OVERPASS_URL or auto)",
+    )
+    parser.add_argument(
         "--pen-width",
         type=float,
         default=0.3,
         help="Plotter pen (stroke) width in mm (default: 0.3)",
-    )
-    parser.add_argument(
-        "--width-mm",
-        type=float,
-        help="Plotter output width in mm (default: --width converted from inches)",
-    )
-    parser.add_argument(
-        "--height-mm",
-        type=float,
-        help="Plotter output height in mm (default: --height converted from inches)",
     )
     parser.add_argument(
         "--hatch-spacing",
@@ -1062,38 +1095,36 @@ Examples:
         print_examples()
         sys.exit(1)
 
-    # Enforce maximum dimensions
-    if args.width > 20:
-        print(
-            f"⚠ Width {args.width} exceeds the maximum allowed limit of 20. It's enforced as max limit 20."
-        )
-        args.width = 20.0
-    if args.height > 20:
-        print(
-            f"⚠ Height {args.height} exceeds the maximum allowed limit of 20. It's enforced as max limit 20."
-        )
-        args.height = 20.0
+    try:
+        OVERPASS_CHOICE = overpass_servers.normalize(args.overpass_url)
+    except ValueError as e:
+        print(f"Error: --overpass-url: {e}")
+        sys.exit(1)
 
-    # Plotter options
-    plotter_settings = None
-    for name in ("pen_width", "width_mm", "height_mm", "hatch_spacing"):
+    # Validate sizes and plotter options
+    for name in ("width", "height", "pen_width", "hatch_spacing"):
         value = getattr(args, name)
         if value is not None and value <= 0:
             print(f"Error: --{name.replace('_', '-')} must be greater than 0.")
             sys.exit(1)
+
+    # Enforce maximum dimensions for matplotlib output
+    if args.format != "plotter":
+        for name in ("width", "height"):
+            if getattr(args, name) > MAX_SIZE_MM:
+                print(f"⚠ --{name.replace('_', '-')} {getattr(args, name):g} exceeds the maximum of "
+                      f"{MAX_SIZE_MM} mm. It's enforced as {MAX_SIZE_MM} mm.")
+                setattr(args, name, float(MAX_SIZE_MM))
+
+    plotter_settings = None
     hatch_spacing = args.hatch_spacing if args.hatch_spacing is not None else args.pen_width
     if hatch_spacing < args.pen_width:
         print(f"Error: --hatch-spacing ({hatch_spacing}) must not be less than --pen-width ({args.pen_width}).")
         sys.exit(1)
     if args.format == "plotter":
-        width_mm = args.width_mm or args.width * plotter_svg.MM_PER_INCH
-        height_mm = args.height_mm or args.height * plotter_svg.MM_PER_INCH
-        plotter_settings = plotter_svg.PlotterSettings(width_mm, height_mm, args.pen_width, hatch_spacing)
-        # Keep the fetch radius and crop in line with the physical aspect ratio
-        args.width = width_mm / plotter_svg.MM_PER_INCH
-        args.height = height_mm / plotter_svg.MM_PER_INCH
-    elif args.width_mm or args.height_mm or args.hatch_spacing:
-        print("⚠ --width-mm, --height-mm and --hatch-spacing only apply to --format plotter; ignoring.")
+        plotter_settings = plotter_svg.PlotterSettings(args.width, args.height, args.pen_width, hatch_spacing)
+    elif args.hatch_spacing is not None:
+        print("⚠ --hatch-spacing only applies to --format plotter; ignoring.")
 
     available_themes = get_available_themes()
     if not available_themes:

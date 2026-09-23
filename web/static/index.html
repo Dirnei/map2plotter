@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Map Poster Generator</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Map Poster Generator</h1>
+    <p>Configure a poster, generate it, and download the result.</p>
+  </header>
+
+  <main>
+    <form id="poster-form" novalidate>
+      <fieldset>
+        <legend>Location</legend>
+        <div class="grid">
+          <label>City *<input name="city" required placeholder="Paris"></label>
+          <label>Country *<input name="country" required placeholder="France"></label>
+          <label>Latitude<input name="latitude" placeholder="optional, e.g. 48.8566"></label>
+          <label>Longitude<input name="longitude" placeholder="optional, e.g. 2.3522"></label>
+          <label>Distance (m)<input name="distance" type="number" min="1" step="1" value="18000"></label>
+        </div>
+        <p class="hint">4000–6000 m: small/dense cities · 8000–12000 m: downtown · 15000–20000 m: full metro</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Map data</legend>
+        <div class="grid">
+          <label>OpenStreetMap server
+            <select name="overpass_url" id="overpass-select">
+              <option value="auto">Automatic (with fallback)</option>
+            </select>
+          </label>
+          <label id="overpass-custom-label" hidden>Custom server URL
+            <input name="overpass_custom" placeholder="https://example.org/api/interpreter">
+          </label>
+        </div>
+        <div class="actions tight">
+          <button type="button" id="check-servers" class="secondary small">Check servers</button>
+          <span id="check-status" class="hint"></span>
+        </div>
+        <ul id="server-status" class="server-status" hidden></ul>
+      </fieldset>
+
+      <fieldset>
+        <legend>Theme</legend>
+        <label class="inline"><input name="all_themes" type="checkbox"> Generate one poster per theme</label>
+        <input type="hidden" name="theme" value="terracotta">
+        <div id="themes" class="themes" role="radiogroup" aria-label="Theme"></div>
+        <p class="error" data-error-for="theme"></p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Size &amp; Format</legend>
+        <div class="grid">
+          <label>Width (mm)<input name="width" type="number" min="1" step="1" value="300"></label>
+          <label>Height (mm)<input name="height" type="number" min="1" step="1" value="400"></label>
+          <label>Format
+            <select name="format">
+              <option value="png" selected>PNG</option>
+              <option value="svg">SVG</option>
+              <option value="pdf">PDF</option>
+              <option value="plotter">Plotter SVG</option>
+            </select>
+          </label>
+        </div>
+        <fieldset id="plotter-options" class="nested" hidden>
+          <legend>Pen plotter</legend>
+          <div class="grid">
+            <label>Pen width (mm)<input name="pen_width" type="number" min="0.01" step="0.05" value="0.3"></label>
+            <label>Hatch spacing (mm)<input name="hatch_spacing" type="number" min="0.01" step="0.1" placeholder="pen width"></label>
+          </div>
+        </fieldset>
+      </fieldset>
+
+      <fieldset>
+        <legend>Labels &amp; Fonts</legend>
+        <div class="grid">
+          <label>Display city<input name="display_city" placeholder="e.g. 東京"></label>
+          <label>Display country<input name="display_country" placeholder="e.g. 日本"></label>
+          <label>Country label<input name="country_label" placeholder="override country text"></label>
+          <label>Font family<input name="font_family" placeholder="Google Font, e.g. Noto Sans JP"></label>
+        </div>
+      </fieldset>
+
+      <div class="actions">
+        <button type="submit" id="generate">Generate poster</button>
+        <button type="button" id="cancel" class="secondary" hidden>Cancel</button>
+        <span id="status" class="status"></span>
+      </div>
+      <p id="banner" class="banner" hidden></p>
+    </form>
+
+    <section id="job" hidden>
+      <h2>Command</h2>
+      <div class="command">
+        <code id="command"></code>
+        <button type="button" id="copy" class="secondary small">Copy</button>
+      </div>
+      <h2>Progress</h2>
+      <pre id="log"></pre>
+      <div id="results" class="cards"></div>
+    </section>
+
+    <section>
+      <h2>History</h2>
+      <div id="history" class="cards"></div>
+      <p id="history-empty" class="hint" hidden>No posters yet.</p>
+    </section>
+  </main>
+
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>
