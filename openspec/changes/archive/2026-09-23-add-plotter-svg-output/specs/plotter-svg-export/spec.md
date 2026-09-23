@@ -1,0 +1,123 @@
+# Spec Delta
+
+## Purpose
+
+Produce a map poster as a pen-plotter-ready SVG in which every mark is a stroked path, sized in real millimetres and computed for a configured pen width.
+
+## ADDED Requirements
+
+### Requirement: Plotter output format
+The CLI SHALL accept `plotter` as a value of `--format`. When it is selected, the tool SHALL write a single `.svg` file to the `posters/` directory. The filename SHALL follow the existing `<city>_<theme>_<timestamp>` pattern with a `.svg` extension. The existing `png`, `svg` and `pdf` formats SHALL behave as before.
+
+#### Scenario: Plotter format writes an SVG file
+- **WHEN** the user runs `create_map_poster.py -c Paris -C France --format plotter`
+- **THEN** a file ending in `.svg` is written to `posters/` and the command exits successfully
+
+#### Scenario: Existing formats unchanged
+- **WHEN** the user runs with `--format png`
+- **THEN** a PNG poster is produced exactly as before this change
+
+#### Scenario: Plotter format with all themes
+- **WHEN** the user runs with `--format plotter --all-themes`
+- **THEN** one plotter SVG is written per theme
+
+### Requirement: Physical size in millimetres
+The CLI SHALL accept `--width-mm` and `--height-mm` (positive numbers). The plotter SVG root element SHALL declare `width` and `height` in `mm` units that match these values. Its `viewBox` SHALL be `0 0 <width-mm> <height-mm>`, so that one user unit equals one millimetre. If the mm options are omitted, the size SHALL be derived from `--width`/`--height` (inches × 25.4). The map SHALL be cropped to the aspect ratio of the configured size.
+
+#### Scenario: Explicit mm size
+- **WHEN** the user passes `--format plotter --width-mm 300 --height-mm 400`
+- **THEN** the SVG root has `width="300mm"`, `height="400mm"` and `viewBox="0 0 300 400"`
+
+#### Scenario: Size derived from inches
+- **WHEN** the user passes `--format plotter --width 12 --height 16` without mm options
+- **THEN** the SVG root has `width="304.8mm"` and `height="406.4mm"`
+
+#### Scenario: All geometry inside the page
+- **WHEN** a plotter SVG is generated
+- **THEN** every path coordinate lies within `[0, width-mm] × [0, height-mm]`
+
+#### Scenario: Invalid size rejected
+- **WHEN** the user passes `--width-mm 0` or a negative value
+- **THEN** the tool prints an error and exits with a non-zero status without writing a file
+
+### Requirement: Configurable pen width
+The CLI SHALL accept `--pen-width` in millimetres (a positive number, default `0.3`). Every path in the plotter SVG SHALL have `fill="none"` and a `stroke-width` equal to the pen width. The pen width SHALL be used to compute multi-stroke road fills and the default hatch spacing.
+
+#### Scenario: Stroke width applied
+- **WHEN** the user passes `--pen-width 0.5`
+- **THEN** every stroked element in the SVG has `stroke-width` 0.5 and no element has a non-`none` fill
+
+#### Scenario: Invalid pen width rejected
+- **WHEN** the user passes `--pen-width 0` or a negative value
+- **THEN** the tool prints an error and exits with a non-zero status
+
+### Requirement: Stroke-only output
+The plotter SVG SHALL contain only stroked vector paths or polylines. It SHALL NOT contain filled shapes, raster images, gradients, `<text>` elements or embedded fonts. The background colour and the top and bottom gradient fades SHALL be omitted.
+
+#### Scenario: No non-plottable elements
+- **WHEN** a plotter SVG is generated with any theme
+- **THEN** it contains no `<image>`, `<text>`, `<linearGradient>`, `<radialGradient>` or `<font>` elements and no filled shapes
+
+### Requirement: Road width rendered with multiple strokes
+Each road-hierarchy class (motorway, primary, secondary, tertiary, residential/default) SHALL have a target width in mm. The target width SHALL scale with the poster's physical size and preserve the existing relative hierarchy. When a class's target width is greater than the pen width, its roads SHALL be drawn with enough parallel strokes, spaced no more than one pen width apart, to cover the target width. When the target width is less than or equal to the pen width, the roads SHALL be drawn as a single centerline stroke. Where roads of different classes overlap, only the higher class SHALL be drawn in the overlapping area.
+
+#### Scenario: Wide road gets several strokes
+- **WHEN** motorway target width is 1.2 mm and the pen width is 0.3 mm
+- **THEN** a motorway is drawn with strokes that cover its 1.2 mm width with gaps no larger than 0.3 mm
+
+#### Scenario: Thin road gets one stroke
+- **WHEN** residential target width is 0.25 mm and the pen width is 0.3 mm
+- **THEN** each residential road is drawn as a single stroke along its centerline
+
+#### Scenario: Thicker pen reduces stroke count
+- **WHEN** the same poster is generated with `--pen-width 0.6` instead of `0.3`
+- **THEN** wide roads use fewer parallel strokes while covering the same target width
+
+#### Scenario: Higher class knocks out lower class
+- **WHEN** a residential road meets a primary road
+- **THEN** no residential stroke is drawn inside the primary road's area
+
+### Requirement: Hatch-filled areas
+Water and park polygons SHALL be filled with parallel hatch lines clipped to the polygon, holes included. The hatch spacing SHALL be configurable via `--hatch-spacing` in mm. It SHALL default to the pen width and SHALL NOT be less than the pen width. Water and parks SHALL use different hatch angles. Road areas SHALL be excluded from hatching.
+
+#### Scenario: Water is hatched
+- **WHEN** the map area contains a lake
+- **THEN** the lake is drawn as parallel lines, clipped to its outline, spaced by the hatch spacing
+
+#### Scenario: Custom hatch spacing
+- **WHEN** the user passes `--hatch-spacing 1.5`
+- **THEN** adjacent hatch lines inside an area are 1.5 mm apart
+
+#### Scenario: Hatch spacing below pen width rejected
+- **WHEN** the user passes `--pen-width 0.5 --hatch-spacing 0.2`
+- **THEN** the tool prints an error and exits with a non-zero status
+
+#### Scenario: Roads not hatched over
+- **WHEN** a road crosses a park
+- **THEN** no park hatch line is drawn inside the road's area
+
+### Requirement: Single-stroke typography
+The city name, the country, the coordinates, the divider line and the OpenStreetMap attribution SHALL be drawn as stroked paths with a single-line (stroke) font. Their relative placement and scaling SHALL match the existing poster layout. The map SHALL be knocked out, with no strokes, within the text block region so that text is not overdrawn. City name formatting rules (letter spacing and uppercase for Latin scripts) SHALL be preserved. Characters that the stroke font cannot render SHALL be skipped with a printed warning, not fail the run.
+
+#### Scenario: Text drawn as paths
+- **WHEN** a plotter SVG is generated for Paris
+- **THEN** "P  A  R  I  S", "FRANCE", the coordinates and "© OpenStreetMap contributors" appear as stroked paths in the text layer
+
+#### Scenario: Map cleared behind text
+- **WHEN** a plotter SVG is generated
+- **THEN** no road or hatch stroke intersects the text block region
+
+#### Scenario: Unsupported glyphs
+- **WHEN** the display city contains characters outside the stroke font (e.g. Japanese)
+- **THEN** a warning is printed, unsupported characters are omitted and the SVG is still written
+
+### Requirement: One layer per pen colour
+Paths SHALL be grouped into SVG layers (`<g>` with `inkscape:groupmode="layer"`), one per distinct theme colour used. Theme keys that share a colour value SHALL share one layer. Each layer SHALL set its `stroke` to that colour and SHALL have an `inkscape:label` that includes the colour and the element types it contains.
+
+#### Scenario: Layers per colour
+- **WHEN** a theme uses five distinct road colours plus distinct water, parks and text colours
+- **THEN** the SVG contains one layer for each of those distinct colours
+
+#### Scenario: Shared colours merged
+- **WHEN** `road_tertiary` and `road_default` have the same colour
+- **THEN** their paths are placed in the same layer

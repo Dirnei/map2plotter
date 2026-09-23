@@ -86,7 +86,15 @@ uv run python3 create_map_poster.py -c "Bengaluru" -C "India" -d 10000
 echo "Large metro view (default 18000m)"
 uv run python3 create_map_poster.py -c "Bengaluru" -C "India" -d 18000
 
-# 7. Utility flags
+# 7. Pen Plotter Output
+echo "--- Pen Plotter Output ---"
+echo "A3 plotter SVG, 0.3mm pen"
+uv run python3 create_map_poster.py -c "Bengaluru" -C "India" -d 5000 --format plotter --width-mm 297 --height-mm 420 --pen-width 0.3
+
+echo "Plotter SVG, 0.5mm pen with sparse hatching"
+uv run python3 create_map_poster.py -c "Bengaluru" -C "India" -d 5000 --format plotter --width-mm 300 --height-mm 400 --pen-width 0.5 --hatch-spacing 1.5
+
+# 8. Utility flags
 echo "--- Utility Flags ---"
 echo "Listing themes"
 uv run python3 create_map_poster.py --list-themes

@@ -26,6 +26,7 @@ from geopandas import GeoDataFrame
 from geopy.geocoders import Nominatim
 from lat_lon_parser import parse
 from font_management import load_fonts
+import plotter_svg
 from matplotlib.font_manager import FontProperties
 from networkx import MultiDiGraph
 from shapely.geometry import Point
@@ -47,6 +48,12 @@ FONTS_DIR = "fonts"
 POSTERS_DIR = "posters"
 
 FONTS = load_fonts()
+
+# Base font sizes in points (at 12 inches width)
+BASE_MAIN = 60
+BASE_SUB = 22
+BASE_COORDS = 14
+BASE_ATTR = 8
 
 
 def _cache_path(key: str) -> str:
@@ -153,6 +160,8 @@ def generate_output_filename(city, theme_name, output_format):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     city_slug = city.lower().replace(" ", "_")
     ext = output_format.lower()
+    if ext == "plotter":
+        ext = "svg"
     filename = f"{city_slug}_{theme_name}_{timestamp}.{ext}"
     return os.path.join(POSTERS_DIR, filename)
 
@@ -369,9 +378,9 @@ def get_coordinates(city, country):
     raise ValueError(f"Could not find coordinates for {city}, {country}")
 
 
-def get_crop_limits(g_proj, center_lat_lon, fig, dist):
+def get_crop_limits(g_proj, center_lat_lon, aspect, dist):
     """
-    Crop inward to preserve aspect ratio while guaranteeing
+    Crop inward to preserve aspect ratio (width / height) while guaranteeing
     full coverage of the requested radius.
     """
     lat, lon = center_lat_lon
@@ -385,9 +394,6 @@ def get_crop_limits(g_proj, center_lat_lon, fig, dist):
         )[0]
     )
     center_x, center_y = center.x, center.y
-
-    fig_width, fig_height = fig.get_size_inches()
-    aspect = fig_width / fig_height
 
     # Start from the *requested* radius
     half_x = dist
@@ -478,6 +484,83 @@ def fetch_features(point, dist, tags, name) -> GeoDataFrame | None:
         return None
 
 
+def format_city_title(display_city, scale_factor):
+    """
+    Format the city name and pick its font size.
+
+    Latin scripts are uppercased with letter spacing (e.g. "P  A  R  I  S");
+    other scripts are kept as-is. Long names get a smaller font to avoid truncation.
+
+    Returns:
+        (formatted city text, font size in points)
+    """
+    if is_latin_script(display_city):
+        spaced_city = "  ".join(list(display_city.upper()))
+    else:
+        spaced_city = display_city
+
+    base_adjusted_main = BASE_MAIN * scale_factor
+    city_char_count = len(display_city)
+
+    # Heuristic: If length is > 10, start reducing.
+    if city_char_count > 10:
+        length_factor = 10 / city_char_count
+        adjusted_font_size = max(base_adjusted_main * length_factor, 10 * scale_factor)
+    else:
+        adjusted_font_size = base_adjusted_main
+
+    return spaced_city, adjusted_font_size
+
+
+def format_coordinates(lat, lon):
+    """Format a lat/lon pair for display, e.g. '48.8566° N / 2.3522° E'."""
+    coords = (
+        f"{lat:.4f}° N / {lon:.4f}° E"
+        if lat >= 0
+        else f"{abs(lat):.4f}° S / {lon:.4f}° E"
+    )
+    if lon < 0:
+        coords = coords.replace("E", "W")
+    return coords
+
+
+def create_plotter_poster(g, water, parks, point, compensated_dist, output_file,
+                          display_city, display_country, plotter_settings):
+    """
+    Render the fetched map data as a plotter-ready SVG.
+
+    Args:
+        g: Street network graph (unprojected)
+        water: Water features GeoDataFrame or None
+        parks: Park features GeoDataFrame or None
+        point: (latitude, longitude) map center
+        compensated_dist: Fetch radius in meters (used for cropping)
+        output_file: Destination .svg path
+        display_city: City text for the poster
+        display_country: Country text for the poster
+        plotter_settings: plotter_svg.PlotterSettings
+    """
+    print("Rendering plotter paths...")
+    width_mm, height_mm = plotter_settings.width_mm, plotter_settings.height_mm
+    g_proj = ox.project_graph(g)
+    edges = ox.graph_to_gdfs(g_proj, nodes=False)
+    crop_xlim, crop_ylim = get_crop_limits(g_proj, point, width_mm / height_mm, compensated_dist)
+
+    scale_factor = min(width_mm, height_mm) / plotter_svg.REFERENCE_SIZE_MM
+    spaced_city, city_size = format_city_title(display_city, scale_factor)
+    texts = {
+        "city": (spaced_city, city_size),
+        "country": (display_country.upper(), BASE_SUB * scale_factor),
+        "coords": (format_coordinates(*point), BASE_COORDS * scale_factor),
+        "attribution": ("© OpenStreetMap contributors", BASE_ATTR),
+    }
+
+    plotter_svg.render(
+        output_file, edges, water, parks, crop_xlim, crop_ylim, THEME, texts, plotter_settings
+    )
+    print(f"✓ Done! Plotter SVG saved as {output_file}")
+
+
 def create_poster(
     city,
     country,
@@ -492,6 +575,7 @@ def create_poster(
     display_city=None,
     display_country=None,
     fonts=None,
+    plotter_settings=None,
 ):
     """
     Generate a complete map poster with roads, water, parks, and typography.
@@ -505,11 +589,12 @@ def create_poster(
         point: (latitude, longitude) tuple for map center
         dist: Map radius in meters
         output_file: Path where poster will be saved
-        output_format: File format ('png', 'svg', or 'pdf')
+        output_format: File format ('png', 'svg', 'pdf', or 'plotter')
         width: Poster width in inches (default: 12)
         height: Poster height in inches (default: 16)
         country_label: Optional override for country text on poster
         _name_label: Optional override for city name (unused, reserved for future use)
+        plotter_settings: plotter_svg.PlotterSettings, required for the 'plotter' format
 
     Raises:
         RuntimeError: If street network data cannot be retrieved
@@ -558,6 +643,13 @@ def create_poster(
 
     print("✓ All data retrieved successfully!")
 
+    if output_format.lower() == "plotter":
+        create_plotter_poster(
+            g, water, parks, point, compensated_dist, output_file,
+            display_city, display_country, plotter_settings,
+        )
+        return
+
     # 2. Setup Plot
     print("Rendering map...")
     fig, ax = plt.subplots(figsize=(width, height), facecolor=THEME["bg"])
@@ -596,7 +688,8 @@ def create_poster(
     edge_widths = get_edge_widths_by_type(g_proj)
 
     # Determine cropping limits to maintain the poster aspect ratio
-    crop_xlim, crop_ylim = get_crop_limits(g_proj, point, fig, compensated_dist)
+    fig_width, fig_height = fig.get_size_inches()
+    crop_xlim, crop_ylim = get_crop_limits(g_proj, point, fig_width / fig_height, compensated_dist)
     # Plot the projected graph and then apply the cropped limits
     ox.plot_graph(
         g_proj, ax=ax, bgcolor=THEME['bg'],
@@ -617,12 +710,6 @@ def create_poster(
     # Calculate scale factor based on smaller dimension (reference 12 inches)
     # This ensures text scales properly for both portrait and landscape orientations
     scale_factor = min(height, width) / 12.0
-
-    # Base font sizes (at 12 inches width)
-    BASE_MAIN = 60
-    BASE_SUB = 22
-    BASE_COORDS = 14
-    BASE_ATTR = 8
 
     # 4. Typography - use custom fonts if provided, otherwise use default FONTS
     active_fonts = fonts or FONTS
@@ -647,28 +734,7 @@ def create_poster(
         )
         font_attr = FontProperties(family="monospace", size=BASE_ATTR * scale_factor)
 
-    # Format city name based on script type
-    # Latin scripts: apply uppercase and letter spacing for aesthetic
-    # Non-Latin scripts (CJK, Thai, Arabic, etc.): no spacing, preserve case structure
-    if is_latin_script(display_city):
-        # Latin script: uppercase with letter spacing (e.g., "P  A  R  I  S")
-        spaced_city = "  ".join(list(display_city.upper()))
-    else:
-        # Non-Latin script: no spacing, no forced uppercase
-        # For scripts like Arabic, Thai, Japanese, etc.
-        spaced_city = display_city
-
-    # Dynamically adjust font size based on city name length to prevent truncation
-    # We use the already scaled "main" font size as the starting point.
-    base_adjusted_main = BASE_MAIN * scale_factor
-    city_char_count = len(display_city)
-
-    # Heuristic: If length is > 10, start reducing.
-    if city_char_count > 10:
-        length_factor = 10 / city_char_count
-        adjusted_font_size = max(base_adjusted_main * length_factor, 10 * scale_factor)
-    else:
-        adjusted_font_size = base_adjusted_main
+    spaced_city, adjusted_font_size = format_city_title(display_city, scale_factor)
 
     if active_fonts:
         font_main_adjusted = FontProperties(
@@ -702,14 +768,7 @@ def create_poster(
         zorder=11,
     )
 
-    lat, lon = point
-    coords = (
-        f"{lat:.4f}° N / {lon:.4f}° E"
-        if lat >= 0
-        else f"{abs(lat):.4f}° S / {lon:.4f}° E"
-    )
-    if lon < 0:
-        coords = coords.replace("E", "W")
+    coords = format_coordinates(*point)
 
     ax.text(
         0.5,
@@ -808,6 +867,9 @@ Examples:
   python create_map_poster.py -c "London" -C "UK" -t noir -d 15000              # Thames curves
   python create_map_poster.py -c "Budapest" -C "Hungary" -t copper_patina -d 8000  # Danube split
 
+  # Pen plotter SVG (A3, 0.3 mm pen)
+  python create_map_poster.py -c "Venice" -C "Italy" -d 3000 -f plotter --width-mm 297 --height-mm 420
+
   # List themes
   python create_map_poster.py --list-themes
 
@@ -819,6 +881,11 @@ Options:
   --all-themes      Generate posters for all themes
   --distance, -d    Map radius in meters (default: 18000)
   --list-themes     List all available themes
+  --format, -f      Output format: png, svg, pdf or plotter (default: png)
+  --pen-width       Plotter pen width in mm (default: 0.3)
+  --width-mm        Plotter output width in mm (default: --width in mm)
+  --height-mm       Plotter output height in mm (default: --height in mm)
+  --hatch-spacing   Plotter hatch spacing for water/parks in mm (default: pen width)
 
 Distance guide:
   4000-6000m   Small/dense cities (Venice, Amsterdam old center)
@@ -866,6 +933,7 @@ Examples:
   python create_map_poster.py --city "New York" --country "USA" -l 40.776676 -73.971321 --theme neon_cyberpunk
   python create_map_poster.py --city Tokyo --country Japan --theme midnight_blue
   python create_map_poster.py --city Paris --country France --theme noir --distance 15000
+  python create_map_poster.py --city Venice --country Italy --format plotter --width-mm 297 --height-mm 420
   python create_map_poster.py --list-themes
         """,
     )
@@ -951,8 +1019,29 @@ Examples:
         "--format",
         "-f",
         default="png",
-        choices=["png", "svg", "pdf"],
-        help="Output format for the poster (default: png)",
+        choices=["png", "svg", "pdf", "plotter"],
+        help="Output format for the poster (default: png). 'plotter' writes a pen-plotter-ready SVG",
+    )
+    parser.add_argument(
+        "--pen-width",
+        type=float,
+        default=0.3,
+        help="Plotter pen (stroke) width in mm (default: 0.3)",
+    )
+    parser.add_argument(
+        "--width-mm",
+        type=float,
+        help="Plotter output width in mm (default: --width converted from inches)",
+    )
+    parser.add_argument(
+        "--height-mm",
+        type=float,
+        help="Plotter output height in mm (default: --height converted from inches)",
+    )
+    parser.add_argument(
+        "--hatch-spacing",
+        type=float,
+        help="Plotter hatch line spacing in mm for water/parks (default: pen width)",
     )
 
     args = parser.parse_args()
@@ -984,6 +1073,27 @@ Examples:
             f"⚠ Height {args.height} exceeds the maximum allowed limit of 20. It's enforced as max limit 20."
         )
         args.height = 20.0
+
+    # Plotter options
+    plotter_settings = None
+    for name in ("pen_width", "width_mm", "height_mm", "hatch_spacing"):
+        value = getattr(args, name)
+        if value is not None and value <= 0:
+            print(f"Error: --{name.replace('_', '-')} must be greater than 0.")
+            sys.exit(1)
+    hatch_spacing = args.hatch_spacing if args.hatch_spacing is not None else args.pen_width
+    if hatch_spacing < args.pen_width:
+        print(f"Error: --hatch-spacing ({hatch_spacing}) must not be less than --pen-width ({args.pen_width}).")
+        sys.exit(1)
+    if args.format == "plotter":
+        width_mm = args.width_mm or args.width * plotter_svg.MM_PER_INCH
+        height_mm = args.height_mm or args.height * plotter_svg.MM_PER_INCH
+        plotter_settings = plotter_svg.PlotterSettings(width_mm, height_mm, args.pen_width, hatch_spacing)
+        # Keep the fetch radius and crop in line with the physical aspect ratio
+        args.width = width_mm / plotter_svg.MM_PER_INCH
+        args.height = height_mm / plotter_svg.MM_PER_INCH
+    elif args.width_mm or args.height_mm or args.hatch_spacing:
+        print("⚠ --width-mm, --height-mm and --hatch-spacing only apply to --format plotter; ignoring.")
 
     available_themes = get_available_themes()
     if not available_themes:
@@ -1036,6 +1146,7 @@ Examples:
                 display_city=args.display_city,
                 display_country=args.display_country,
                 fonts=custom_fonts,
+                plotter_settings=plotter_settings,
             )
 
         print("\n" + "=" * 50)

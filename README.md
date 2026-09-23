@@ -111,6 +111,38 @@ python create_map_poster.py --city <city> --country <country> [options]
 | **OPTIONAL:** `--all-themes` | | Generate posters for all available themes | |
 | **OPTIONAL:** `--width` | `-W` | Image width in inches | 12 (max: 20) |
 | **OPTIONAL:** `--height` | `-H` | Image height in inches | 16 (max: 20) |
+| **OPTIONAL:** `--format` | `-f` | Output format: `png`, `svg`, `pdf` or `plotter` | png |
+
+### Pen Plotter Output
+
+`--format plotter` writes an SVG that a pen plotter can draw directly. It contains only stroked paths: no fills, gradients, raster images or font text. The page is sized in millimetres (1 SVG unit = 1 mm).
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--pen-width` | Pen (stroke) width in mm. Wide roads get as many parallel strokes as they need, and hatch spacing is based on this | 0.3 |
+| `--width-mm` | Final poster width in mm | `--width` × 25.4 |
+| `--height-mm` | Final poster height in mm | `--height` × 25.4 |
+| `--hatch-spacing` | Distance between hatch lines for water and parks, in mm (must be ≥ pen width) | pen width |
+
+How the poster is turned into pen paths:
+- **Roads** keep the road hierarchy. A road wider than the pen is filled with parallel strokes. Narrower roads get a single centerline. Where roads overlap, the more important road is the only one drawn.
+- **Water and parks** are hatch-filled at different angles. Roads are left out of the hatching.
+- **Text** is drawn with a single-stroke (Hershey) font, and the map is cleared behind it. Accented letters are drawn without their accents. Scripts the font cannot draw (e.g. CJK) are skipped with a warning, so use a Latin `--display-city` for those.
+- **Pens:** each theme colour gets its own Inkscape layer, so you can swap pens between layers. The background colour is not drawn; use coloured paper instead.
+
+```bash
+# A3 portrait poster for a 0.3 mm fineliner
+python create_map_poster.py -c "Venice" -C "Italy" -d 3000 --format plotter --width-mm 297 --height-mm 420 --pen-width 0.3
+
+# Thicker pen with sparser hatching for faster plots
+python create_map_poster.py -c "Paris" -C "France" --format plotter --width-mm 300 --height-mm 400 --pen-width 0.5 --hatch-spacing 1.5
+```
+
+**Tip:** paths are already sorted to keep pen-up travel short. To optimise further, post-process the file with [vpype](https://github.com/abey79/vpype), which keeps the layers:
+
+```bash
+vpype read posters/venice_terracotta_*.svg linemerge linesort write --page-size 297x420mm optimized.svg
+```
 
 ### Multilingual Support - i18n
 

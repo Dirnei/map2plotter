@@ -27,6 +27,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY create_map_poster.py .
 COPY font_management.py .
+COPY plotter_svg.py .
 COPY themes/ themes/
 COPY fonts/ fonts/
 
