@@ -11,11 +11,9 @@ import argparse
 import asyncio
 import json
 import os
-import pickle
 import sys
 import time
 from datetime import datetime
-from pathlib import Path
 from typing import cast
 
 import matplotlib.colors as mcolors
@@ -26,24 +24,16 @@ from geopandas import GeoDataFrame
 from geopy.geocoders import Nominatim
 from lat_lon_parser import parse
 from font_management import load_fonts
+import osm_cache
 import overpass_servers
 import plotter_svg
 from matplotlib.font_manager import FontProperties
 from networkx import MultiDiGraph
+from osm_cache import CacheError, cache_get, cache_set
 from osmnx._errors import InsufficientResponseError
 from shapely.geometry import Point
 from tqdm import tqdm
 
-
-class CacheError(Exception):
-    """Raised when a cache operation fails."""
-
-    pass
-
-
-CACHE_DIR_PATH = os.environ.get("CACHE_DIR", "cache")
-CACHE_DIR = Path(CACHE_DIR_PATH)
-CACHE_DIR.mkdir(exist_ok=True)
 
 # OpenStreetMap server: 'auto' (health check + fallback) or an Overpass API base URL
 OVERPASS_CHOICE = overpass_servers.AUTO
@@ -65,64 +55,6 @@ BASE_MAIN = 60
 BASE_SUB = 22
 BASE_COORDS = 14
 BASE_ATTR = 8
-
-
-def _cache_path(key: str) -> str:
-    """
-    Generate a safe cache file path from a cache key.
-
-    Args:
-        key: Cache key identifier
-
-    Returns:
-        Path to cache file with .pkl extension
-    """
-    safe = key.replace(os.sep, "_")
-    return os.path.join(CACHE_DIR, f"{safe}.pkl")
-
-
-def cache_get(key: str):
-    """
-    Retrieve a cached object by key.
-
-    Args:
-        key: Cache key identifier
-
-    Returns:
-        Cached object if found, None otherwise
-
-    Raises:
-        CacheError: If cache read operation fails
-    """
-    try:
-        path = _cache_path(key)
-        if not os.path.exists(path):
-            return None
-        with open(path, "rb") as f:
-            return pickle.load(f)
-    except Exception as e:
-        raise CacheError(f"Cache read failed: {e}") from e
-
-
-def cache_set(key: str, value):
-    """
-    Store an object in the cache.
-
-    Args:
-        key: Cache key identifier
-        value: Object to cache (must be picklable)
-
-    Raises:
-        CacheError: If cache write operation fails
-    """
-    try:
-        if not os.path.exists(CACHE_DIR):
-            os.makedirs(CACHE_DIR)
-        path = _cache_path(key)
-        with open(path, "wb") as f:
-            pickle.dump(value, f, protocol=pickle.HIGHEST_PROTOCOL)
-    except Exception as e:
-        raise CacheError(f"Cache write failed: {e}") from e
 
 
 # Font loading now handled by font_management.py module
@@ -457,27 +389,28 @@ def fetch_graph(point, dist) -> MultiDiGraph:
         RuntimeError: If the street network cannot be downloaded (message includes the cause)
     """
     lat, lon = point
-    graph = f"graph_{lat}_{lon}_{dist}"
-    cached = cache_get(graph)
-    if cached is not None:
-        print("✓ Using cached street network")
-        return cast(MultiDiGraph, cached)
+
+    def download(fetch_dist):
+        g = overpass_download(
+            lambda: ox.graph_from_point(
+                point, dist=fetch_dist, dist_type='bbox', network_type='all', truncate_by_edge=True
+            )
+        )
+        # Rate limit between requests
+        time.sleep(0.5)
+        return g
 
     try:
-        g = overpass_download(
-            lambda: ox.graph_from_point(point, dist=dist, dist_type='bbox', network_type='all', truncate_by_edge=True)
+        g, cached = osm_cache.load_area(
+            f"graph_{lat}_{lon}", "", dist, download, lambda g, d: osm_cache.crop_graph(g, point, d)
         )
     except overpass_servers.OverpassError as e:
         raise RuntimeError(f"Failed to retrieve street network data from OpenStreetMap: {e}") from e
     except Exception as e:
         raise RuntimeError(f"Failed to retrieve street network data: {e}") from e
-    # Rate limit between requests
-    time.sleep(0.5)
-    try:
-        cache_set(graph, g)
-    except CacheError as e:
-        print(e)
-    return g
+    if cached:
+        print("✓ Using cached street network")
+    return cast(MultiDiGraph, g)
 
 
 def fetch_features(point, dist, tags, name) -> GeoDataFrame | None:
@@ -494,31 +427,33 @@ def fetch_features(point, dist, tags, name) -> GeoDataFrame | None:
         name: Name for this feature type (for caching and logging)
 
     Returns:
-        GeoDataFrame of features, or None if fetch fails
+        GeoDataFrame of features, or None if there are none or the fetch fails
     """
     lat, lon = point
     tag_str = "_".join(tags.keys())
-    features = f"{name}_{lat}_{lon}_{dist}_{tag_str}"
-    cached = cache_get(features)
-    if cached is not None:
-        print(f"✓ Using cached {name}")
-        return cast(GeoDataFrame, cached)
+
+    def download(fetch_dist):
+        try:
+            data = overpass_download(lambda: ox.features_from_point(point, tags=tags, dist=fetch_dist))
+        except InsufficientResponseError:
+            data = None
+        # Rate limit between requests
+        time.sleep(0.3)
+        return data
 
     try:
-        data = overpass_download(lambda: ox.features_from_point(point, tags=tags, dist=dist))
-    except InsufficientResponseError:
-        tqdm.write(f"  No {name} in this area")
-        return None
+        data, cached = osm_cache.load_area(
+            f"{name}_{lat}_{lon}", f"_{tag_str}", dist, download,
+            lambda gdf, d: osm_cache.crop_features(gdf, point, d),
+        )
     except Exception as e:
         tqdm.write(f"⚠ Could not download {name} ({e}); the poster is drawn without them")
         return None
-    # Rate limit between requests
-    time.sleep(0.3)
-    try:
-        cache_set(features, data)
-    except CacheError as e:
-        print(e)
-    return data
+    if cached:
+        print(f"✓ Using cached {name}")
+    if data is None:
+        tqdm.write(f"  No {name} in this area")
+    return cast(GeoDataFrame | None, data)
 
 
 def format_city_title(display_city, scale_factor):

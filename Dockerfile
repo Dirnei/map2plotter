@@ -27,6 +27,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY create_map_poster.py .
 COPY font_management.py .
+COPY osm_cache.py .
 COPY overpass_servers.py .
 COPY plotter_svg.py .
 COPY web_app.py .
