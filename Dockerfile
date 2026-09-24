@@ -30,6 +30,7 @@ COPY font_management.py .
 COPY osm_cache.py .
 COPY overpass_servers.py .
 COPY plotter_svg.py .
+COPY poster_edits.py .
 COPY web_app.py .
 COPY web/ web/
 COPY themes/ themes/

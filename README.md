@@ -123,15 +123,23 @@ python web_app.py              # then open http://127.0.0.1:8000/
 python web_app.py --port 9000  # use another port
 ```
 
-The page lets you:
-- set every option in one form, pick a theme by its colour swatches, and see the pen plotter options when that format is selected
-- choose the OpenStreetMap server (or automatic fallback) and check which servers are up
-- watch the generator's output live and cancel a running job
-- copy the exact `create_map_poster.py` command it ran
-- preview and download the finished poster(s)
-- browse everything in `posters/`
+The page works in two steps:
 
-It runs one job at a time.
+1. **Location**: first choose what you are making: a **Print poster** (PNG, SVG or PDF, up to 500 mm per side) or a **Pen plotter** SVG (any size). Then enter the city, country (or exact coordinates), distance, poster size and OpenStreetMap server (automatic fallback, or a fixed server; **Check servers** shows which ones are up). **Load map** downloads the data once, streaming the generator's output, and shows a quick preview.
+2. **Customize**: only the options of your workflow. For print posters that is theme, labels, font and file format. For the pen plotter it is pen colours (one SVG layer each), labels, pen width, fill mode, line spacing and water outline. Every change re-renders the preview from the loaded data with `--cache-only`, so nothing is downloaded again. **Export poster** writes the full-resolution poster to `posters/`, optionally one per theme.
+
+Zoom into the preview with **+ / − / Fit** (or the `+`, `-` and `0` keys) and Ctrl + mouse wheel. Move around with the **Pan** tool or the middle mouse button. Plotter previews are vector and stay sharp at any zoom.
+
+In the Customize step, you can edit the preview directly:
+- **Erase ▭ / Erase ✎**: drag a rectangle or draw a shape to remove the map there. Text is kept.
+- **Select**: click an erased region, then press **Delete region** (or the Delete key).
+- **Move text**: drag the city, country, coordinates or divider.
+- **Show / hide**: turn single text lines or map layers (water, parks, each road class) on or off.
+- **Undo / Redo** (Ctrl+Z / Ctrl+Y) and **Reset edits**.
+
+Edits are stored in page millimetres and applied again on every re-render and export (see [Edit lists](#edit-lists)), so switching the theme, format or pen keeps them. Loading a different location or size clears them after a confirmation.
+
+The page also shows the exact `create_map_poster.py` command of the last load or export, and lists everything in `posters/`. Previews are kept in `cache/web/` and do not appear there. One job runs at a time; a newer preview replaces one that is still rendering.
 
 With Docker, run `docker compose up -d` or start the container without arguments (see [With Docker Compose](#with-docker-compose-web-interface)).
 
@@ -159,6 +167,10 @@ With Docker, run `docker compose up -d` or start the container without arguments
 | **OPTIONAL:** `--height` | `-H` | Poster height in mm | 400 (max: 500, no limit for plotter) |
 | **OPTIONAL:** `--format` | `-f` | Output format: `png`, `svg`, `pdf` or `plotter` | png |
 | **OPTIONAL:** `--overpass-url` | | OpenStreetMap (Overpass API) server URL, or `auto` | `$OVERPASS_URL` or `auto` |
+| **OPTIONAL:** `--cache-only` | | Never download map data or geocode; fail if the area is not cached | |
+| **OPTIONAL:** `--output` | `-o` | Write the poster to this file instead of `posters/<city>_<theme>_<timestamp>` (extension must match the format; not with `--all-themes`) | |
+| **OPTIONAL:** `--dpi` | | Resolution of PNG output | 300 |
+| **OPTIONAL:** `--edits` | | JSON edit list to apply (see [Edit lists](#edit-lists)) | |
 
 ### OpenStreetMap Servers
 
@@ -180,11 +192,14 @@ In the web interface, the **Map data** section has a dropdown for the server and
 | `--pen-width` | Pen (stroke) width in mm. Wide roads get as many parallel strokes as they need, and hatch spacing is based on this | 0.3 |
 | `--width` | Final poster width in mm (same option as for the other formats) | 300 |
 | `--height` | Final poster height in mm (same option as for the other formats) | 400 |
-| `--hatch-spacing` | Distance between hatch lines for water and parks, in mm (must be ≥ pen width) | pen width |
+| `--hatch-spacing` | Distance between fill lines for water and parks, in mm (must be ≥ pen width) | pen width |
+| `--water-fill` / `--parks-fill` | `hatch` (parallel lines) or `concentric` (contours following the shape) | hatch |
+| `--water-spacing` / `--parks-spacing` | Fill line spacing for that area type, in mm (must be ≥ pen width) | `--hatch-spacing` |
+| `--water-outline` | Also stroke the shoreline of water areas (the fill then keeps one spacing away from it) | off |
 
 How the poster is turned into pen paths:
 - **Roads** keep the road hierarchy. A road wider than the pen is filled with parallel strokes. Narrower roads get a single centerline. Where roads overlap, the more important road is the only one drawn.
-- **Water and parks** are hatch-filled at different angles. Roads are left out of the hatching.
+- **Water and parks** are hatch-filled at different angles, or filled with concentric contours. Roads are left out of the fill. Water can get an outline.
 - **Text** is drawn with a single-stroke (Hershey) font, and the map is cleared behind it. Accented letters are drawn without their accents. Scripts the font cannot draw (e.g. CJK) are skipped with a warning, so use a Latin `--display-city` for those.
 - **Pens:** each theme colour gets its own Inkscape layer, so you can swap pens between layers. The background colour is not drawn; use coloured paper instead.
 
@@ -194,6 +209,9 @@ python create_map_poster.py -c "Venice" -C "Italy" -d 3000 --format plotter --wi
 
 # Thicker pen with sparser hatching for faster plots
 python create_map_poster.py -c "Paris" -C "France" --format plotter --width 300 --height 400 --pen-width 0.5 --hatch-spacing 1.5
+
+# Outlined water with concentric fill, sparse parks
+python create_map_poster.py -c "Amsterdam" -C "Netherlands" -d 4000 -f plotter --water-outline --water-fill concentric --water-spacing 0.8 --parks-spacing 2
 ```
 
 **Tip:** paths are already sorted to keep pen-up travel short. To optimise further, post-process the file with [vpype](https://github.com/abey79/vpype), which keeps the layers:
@@ -201,6 +219,25 @@ python create_map_poster.py -c "Paris" -C "France" --format plotter --width 300 
 ```bash
 vpype read posters/venice_terracotta_*.svg linemerge linesort write --page-size 297x420mm optimized.svg
 ```
+
+### Edit lists
+
+`--edits <file>` applies manual changes to any format and theme. The web interface's editor writes this file for you. All positions are in page millimetres, measured from the top-left corner:
+
+```json
+{
+  "version": 1,
+  "erase": [[[20, 20], [80, 20], [80, 60], [20, 60]]],
+  "text": {"city": {"dy": -10}, "coords": {"hidden": true}},
+  "hidden_layers": ["parks"]
+}
+```
+
+- `erase`: polygons (at least 3 points) in which roads, water and parks are removed. Text is kept.
+- `text`: `city`, `country`, `coords` or `divider`, each with an optional `dx`/`dy` offset in mm and `hidden`.
+- `hidden_layers`: any of `water`, `parks`, `road_motorway`, `road_primary`, `road_secondary`, `road_tertiary`, `road_residential`, `road_default`.
+
+The OpenStreetMap attribution is always drawn.
 
 ### Multilingual Support - i18n
 

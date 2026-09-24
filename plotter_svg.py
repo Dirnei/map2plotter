@@ -56,6 +56,9 @@ INKSCAPE_NS = "http://www.inkscape.org/namespaces/inkscape"
 SVG_NS = "http://www.w3.org/2000/svg"
 
 
+FILL_MODES = ("hatch", "concentric")
+
+
 @dataclass
 class PlotterSettings:
     """Physical output parameters for the plotter SVG (all values in mm)."""
@@ -64,6 +67,20 @@ class PlotterSettings:
     height_mm: float
     pen_width: float
     hatch_spacing: float
+    water_fill: str = "hatch"
+    parks_fill: str = "hatch"
+    water_spacing: float | None = None  # Defaults to hatch_spacing
+    parks_spacing: float | None = None  # Defaults to hatch_spacing
+    water_outline: bool = False
+
+    def fill_mode(self, kind):
+        """Fill mode ('hatch' or 'concentric') for 'water' or 'parks'."""
+        return getattr(self, f"{kind}_fill")
+
+    def spacing(self, kind):
+        """Line spacing in mm for 'water' or 'parks'."""
+        value = getattr(self, f"{kind}_spacing")
+        return self.hatch_spacing if value is None else value
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +163,27 @@ def hatch(geom, spacing, angle):
     return to_polylines(affinity.rotate(clipped, angle, origin=(0, 0)))
 
 
+def concentric(area, spacing, pen, start=None):
+    """
+    Fill an area with closed contours that follow its outline and holes.
+
+    Args:
+        area: Polygon/MultiPolygon to fill
+        spacing: Distance between adjacent contours
+        pen: Pen width; contours shorter than two pen widths are dropped
+        start: Inset of the first contour (default: half a pen width)
+
+    Returns:
+        List of polylines
+    """
+    out = []
+    inset = area.buffer(-(pen / 2 if start is None else start))
+    while not inset.is_empty:
+        out.extend(p for p in to_polylines(inset) if polyline_length(p) >= 2 * pen)
+        inset = inset.buffer(-spacing)
+    return out
+
+
 def fill_area(area, pen, centerlines=None):
     """
     Cover an area with pen strokes: concentric inset contours spaced one pen
@@ -159,11 +197,7 @@ def fill_area(area, pen, centerlines=None):
     Returns:
         List of polylines
     """
-    out = []
-    inset = area.buffer(-pen / 2)
-    while not inset.is_empty:
-        out.extend(p for p in to_polylines(inset) if polyline_length(p) >= 2 * pen)
-        inset = inset.buffer(-pen)
+    out = concentric(area, pen, pen)
     if centerlines is not None and not centerlines.is_empty:
         out.extend(to_polylines(merge_lines(centerlines.intersection(area))))
     return out
@@ -289,12 +323,46 @@ def _buffer_union(lines, radius):
     return shapely.union_all(shapely.buffer(to_shapely_lines(lines), radius, quad_segs=4))
 
 
-def render_areas(polygons, spacing, angle, exclude, page):
-    """Hatch polygons (mm) inside the page, leaving out the excluded area."""
+def _clip_lines(polylines, exclude):
+    """Remove the parts of polylines that lie inside the excluded area."""
+    lines = to_shapely_lines(MultiLineString(polylines)) if polylines else []
+    if not lines or exclude is None or exclude.is_empty:
+        return [list(ln.coords) for ln in lines]
+    return to_polylines(shapely.difference(MultiLineString(lines), exclude))
+
+
+def render_areas(polygons, spacing, angle, exclude, page, mode="hatch", pen=None, outline=False):
+    """
+    Fill polygons (mm) inside the page, leaving out the excluded area.
+
+    Args:
+        polygons: Area geometry in page mm (or None)
+        spacing: Distance between fill lines
+        angle: Hatch angle in degrees (hatch mode)
+        exclude: Area to keep free (roads, text, erase regions)
+        page: Page polygon
+        mode: 'hatch' (parallel lines) or 'concentric' (inset contours)
+        pen: Pen width (defaults to the spacing)
+        outline: Also stroke the area boundary; the fill then keeps one spacing away from it
+
+    Returns:
+        List of polylines
+    """
     if polygons is None or polygons.is_empty:
         return []
-    area = polygons.intersection(page).difference(exclude)
-    return hatch(area, spacing, angle)
+    pen = spacing if pen is None else pen
+    area = polygons.intersection(page)
+    out = []
+    if outline:
+        out.extend(_clip_lines(to_polylines(area.boundary), exclude))
+    if mode == "concentric":
+        area = area.simplify(pen / 4)
+        rings = concentric(area, spacing, pen, start=spacing if outline else None)
+        out.extend(p for p in _clip_lines(rings, exclude) if len(p) >= 2)
+    else:
+        fill = area.buffer(-spacing) if outline else area
+        out.extend(hatch(fill.difference(exclude), spacing, angle))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -411,7 +479,52 @@ def text_box(extent, baseline, size_pt):
     return box(extent[0], top, extent[1], bottom)
 
 
-def layout_text(texts, width_mm, height_mm, pen):
+def _layout(texts, width_mm, height_mm, pen, edits=None):
+    """
+    Place poster text as in the raster layout, applying text edits.
+
+    Returns:
+        (polylines, {key: bounding polygon in mm})
+    """
+    W, H = width_mm, height_mm
+    polylines, boxes = [], {}
+
+    def text_edit(key):
+        return edits.text_edit(key) if edits is not None else None
+
+    def place(key, font, x, y_frac, align="center", bottom_anchor=False):
+        text, size = texts[key]
+        edit = text_edit(key)
+        if not text or (edit is not None and edit.hidden):
+            return
+        dx, dy = (edit.dx, edit.dy) if edit is not None else (0.0, 0.0)
+        baseline = H * (1 - y_frac) + dy
+        _, (x0, x1) = text_polylines(text, font, size, 0, 0, align, warn=False)
+        if x1 - x0 > W * MAX_TEXT_WIDTH:
+            size *= W * MAX_TEXT_WIDTH / (x1 - x0)
+        if bottom_anchor:
+            scale = size * MM_PER_PT * CAP_HEIGHT_PER_EM / (HERSHEY_BASE - HERSHEY_CAP)
+            baseline -= (HERSHEY_BOTTOM - HERSHEY_BASE) * scale
+        lines, extent = text_polylines(text, font, size, x + dx, baseline, align)
+        polylines.extend(lines)
+        boxes[key] = text_box(extent, baseline, size)
+
+    place("city", "futuram", W / 2, CITY_Y)
+    place("country", "futural", W / 2, COUNTRY_Y)
+    place("coords", "futural", W / 2, COORDS_Y)
+    place("attribution", "futural", W * ATTRIBUTION_POS[0], ATTRIBUTION_POS[1], "right", True)
+
+    edit = text_edit("divider")
+    if edit is None or not edit.hidden:
+        dx, dy = (edit.dx, edit.dy) if edit is not None else (0.0, 0.0)
+        y = H * (1 - DIVIDER_Y) + dy
+        divider = [(W * DIVIDER_X[0] + dx, y), (W * DIVIDER_X[1] + dx, y)]
+        polylines.append(divider)
+        boxes["divider"] = LineString(divider).buffer(pen / 2)
+    return polylines, boxes
+
+
+def layout_text(texts, width_mm, height_mm, pen, edits=None):
     """
     Place poster text as in the raster layout.
 
@@ -420,40 +533,21 @@ def layout_text(texts, width_mm, height_mm, pen):
                each a (text, size_pt) tuple
         width_mm, height_mm: Page size
         pen: Pen width in mm (sets knockout padding)
+        edits: Optional poster_edits.Edits (text offsets and hidden lines)
 
     Returns:
         (polylines, knockout polygon)
     """
-    W, H = width_mm, height_mm
-    polylines, boxes = [], []
-
-    def place(key, font, x, y_frac, align="center", bottom_anchor=False):
-        text, size = texts[key]
-        if not text:
-            return
-        baseline = H * (1 - y_frac)
-        _, (x0, x1) = text_polylines(text, font, size, 0, 0, align, warn=False)
-        if x1 - x0 > W * MAX_TEXT_WIDTH:
-            size *= W * MAX_TEXT_WIDTH / (x1 - x0)
-        if bottom_anchor:
-            scale = size * MM_PER_PT * CAP_HEIGHT_PER_EM / (HERSHEY_BASE - HERSHEY_CAP)
-            baseline -= (HERSHEY_BOTTOM - HERSHEY_BASE) * scale
-        lines, extent = text_polylines(text, font, size, x, baseline, align)
-        polylines.extend(lines)
-        boxes.append(text_box(extent, baseline, size))
-
-    place("city", "futuram", W / 2, CITY_Y)
-    place("country", "futural", W / 2, COUNTRY_Y)
-    place("coords", "futural", W / 2, COORDS_Y)
-    place("attribution", "futural", W * ATTRIBUTION_POS[0], ATTRIBUTION_POS[1], "right", True)
-
-    divider = [(W * DIVIDER_X[0], H * (1 - DIVIDER_Y)), (W * DIVIDER_X[1], H * (1 - DIVIDER_Y))]
-    polylines.append(divider)
-    boxes.append(LineString(divider).buffer(pen / 2))
-
+    polylines, boxes = _layout(texts, width_mm, height_mm, pen, edits)
     padding = max(2.0, 3 * pen)
-    knockout = unary_union([b.buffer(padding, join_style="mitre") for b in boxes])
+    knockout = unary_union([b.buffer(padding, join_style="mitre") for b in boxes.values()])
     return polylines, knockout
+
+
+def text_boxes(texts, width_mm, height_mm, pen=0.3):
+    """Default bounding boxes (minx, miny, maxx, maxy in mm) of each text line, without edits."""
+    _, boxes = _layout(texts, width_mm, height_mm, pen)
+    return {key: b.bounds for key, b in boxes.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -547,7 +641,7 @@ def _polygons_mm(gdf, crs, xlim, ylim, width_mm):
     return unary_union(geoms) if geoms else None
 
 
-def render(output_file, edges, water, parks, xlim, ylim, theme, texts, settings):
+def render(output_file, edges, water, parks, xlim, ylim, theme, texts, settings, edits=None):
     """
     Render a plotter-ready SVG poster.
 
@@ -560,18 +654,27 @@ def render(output_file, edges, water, parks, xlim, ylim, theme, texts, settings)
         theme: Theme colour dict
         texts: Poster text, see layout_text
         settings: PlotterSettings
+        edits: Optional poster_edits.Edits
     """
     W, H, pen = settings.width_mm, settings.height_mm, settings.pen_width
     page = box(0, 0, W, H)
 
+    def hidden(key):
+        return edits is not None and edits.layer_hidden(key)
+
     print("Laying out stroke text...")
-    text_lines, knockout = layout_text(texts, W, H, pen)
+    text_lines, knockout = layout_text(texts, W, H, pen, edits)
     text_lines = to_polylines(MultiLineString(text_lines).intersection(page))
+    if edits is not None:
+        # Erase regions clear the map like the text block does (text itself stays)
+        knockout = unary_union([knockout, edits.erase_area(W, H)])
 
     print("Converting roads to pen strokes...")
     keys = edges["highway"].map(classify_highway)
     roads_by_class = {}
     for key in keys.unique():
+        if hidden(key):
+            continue
         geoms = shapely.clip_by_rect(edges.geometry[keys == key].values, xlim[0], ylim[0], xlim[1], ylim[1])
         lines = [page_transform(g, xlim, ylim, W) for g in geoms if not g.is_empty]
         roads_by_class[key] = MultiLineString(
@@ -579,15 +682,20 @@ def render(output_file, edges, water, parks, xlim, ylim, theme, texts, settings)
         )
     road_strokes, road_area = render_roads(roads_by_class, pen, page, knockout, W, H)
 
-    print("Hatching water and parks...")
+    print("Filling water and parks...")
     exclude = unary_union([road_area, knockout])
     crs = edges.crs
-    water_lines = render_areas(
-        _polygons_mm(water, crs, xlim, ylim, W), settings.hatch_spacing, WATER_HATCH_ANGLE, exclude, page
-    )
-    parks_lines = render_areas(
-        _polygons_mm(parks, crs, xlim, ylim, W), settings.hatch_spacing, PARKS_HATCH_ANGLE, exclude, page
-    )
+    water_lines, parks_lines = [], []
+    if not hidden("water"):
+        water_lines = render_areas(
+            _polygons_mm(water, crs, xlim, ylim, W), settings.spacing("water"), WATER_HATCH_ANGLE, exclude, page,
+            mode=settings.fill_mode("water"), pen=pen, outline=settings.water_outline,
+        )
+    if not hidden("parks"):
+        parks_lines = render_areas(
+            _polygons_mm(parks, crs, xlim, ylim, W), settings.spacing("parks"), PARKS_HATCH_ANGLE, exclude, page,
+            mode=settings.fill_mode("parks"), pen=pen,
+        )
 
     entries = [("water", theme["water"], water_lines), ("parks", theme["parks"], parks_lines)]
     for key, _, _ in reversed(ROAD_CLASSES):

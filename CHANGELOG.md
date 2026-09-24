@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] - Community Contributions
 
 ### Added
+- **Two-step web interface**: load a location once (Location), then customize it with live previews rendered from the cached data (Customize) and export
+- **In-browser poster editor**: erase map regions, move or hide text lines, hide layers, with undo/redo; edits are kept across theme, format and pen changes
+- **CLI options** `--cache-only` (never download), `--output`/`-o` (explicit output file), `--dpi` (PNG resolution) and `--edits` (JSON edit list)
+- **Plotter fills**: `--water-fill`/`--parks-fill` (`hatch` or `concentric`), per-area spacing `--water-spacing`/`--parks-spacing`, and `--water-outline`
 - **uv package manager support** ([PR #20](https://github.com/originalankur/maptoposter/pull/20))
   - Added `pyproject.toml` with project metadata and dependencies
   - Added `uv.lock` for reproducible builds

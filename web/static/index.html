@@ -9,11 +9,32 @@
 <body>
   <header>
     <h1>Map Poster Generator</h1>
-    <p>Configure a poster, generate it, and download the result.</p>
+    <p>Load a location, customize the poster on a live preview, then export it.</p>
+    <ol class="steps" aria-label="Steps">
+      <li><button type="button" class="step" data-step="location" aria-current="step">1 · Location</button></li>
+      <li><button type="button" class="step" data-step="customize" disabled>2 · Customize</button></li>
+    </ol>
   </header>
 
   <main>
-    <form id="poster-form" novalidate>
+    <!-- Step 1: Location -->
+    <form id="location-form" class="step-panel" data-panel="location" novalidate>
+      <fieldset>
+        <legend>What are you making?</legend>
+        <div class="modes" role="radiogroup" aria-label="Workflow">
+          <label class="mode-card">
+            <input type="radio" name="mode" value="print" checked>
+            <span class="mode-title">Print poster</span>
+            <span class="mode-desc">Coloured, filled map with gradients and your font. Exported as PNG, SVG or PDF, up to 500 mm per side.</span>
+          </label>
+          <label class="mode-card">
+            <input type="radio" name="mode" value="plotter">
+            <span class="mode-title">Pen plotter</span>
+            <span class="mode-desc">Stroke-only SVG for a pen plotter: hatched or contour fills, one layer per pen colour, single-line text. Any size.</span>
+          </label>
+        </div>
+      </fieldset>
+
       <fieldset>
         <legend>Location</legend>
         <div class="grid">
@@ -24,6 +45,15 @@
           <label>Distance (m)<input name="distance" type="number" min="1" step="1" value="18000"></label>
         </div>
         <p class="hint">4000–6000 m: small/dense cities · 8000–12000 m: downtown · 15000–20000 m: full metro</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Poster size</legend>
+        <div class="grid">
+          <label>Width (mm)<input name="width" type="number" min="1" step="1" value="300"></label>
+          <label>Height (mm)<input name="height" type="number" min="1" step="1" value="400"></label>
+        </div>
+        <p class="hint" id="size-hint"></p>
       </fieldset>
 
       <fieldset>
@@ -45,62 +75,157 @@
         <ul id="server-status" class="server-status" hidden></ul>
       </fieldset>
 
-      <fieldset>
-        <legend>Theme</legend>
-        <label class="inline"><input name="all_themes" type="checkbox"> Generate one poster per theme</label>
-        <input type="hidden" name="theme" value="terracotta">
-        <div id="themes" class="themes" role="radiogroup" aria-label="Theme"></div>
-        <p class="error" data-error-for="theme"></p>
-      </fieldset>
-
-      <fieldset>
-        <legend>Size &amp; Format</legend>
-        <div class="grid">
-          <label>Width (mm)<input name="width" type="number" min="1" step="1" value="300"></label>
-          <label>Height (mm)<input name="height" type="number" min="1" step="1" value="400"></label>
-          <label>Format
-            <select name="format">
-              <option value="png" selected>PNG</option>
-              <option value="svg">SVG</option>
-              <option value="pdf">PDF</option>
-              <option value="plotter">Plotter SVG</option>
-            </select>
-          </label>
-        </div>
-        <fieldset id="plotter-options" class="nested" hidden>
-          <legend>Pen plotter</legend>
-          <div class="grid">
-            <label>Pen width (mm)<input name="pen_width" type="number" min="0.01" step="0.05" value="0.3"></label>
-            <label>Hatch spacing (mm)<input name="hatch_spacing" type="number" min="0.01" step="0.1" placeholder="pen width"></label>
-          </div>
-        </fieldset>
-      </fieldset>
-
-      <fieldset>
-        <legend>Labels &amp; Fonts</legend>
-        <div class="grid">
-          <label>Display city<input name="display_city" placeholder="e.g. 東京"></label>
-          <label>Display country<input name="display_country" placeholder="e.g. 日本"></label>
-          <label>Country label<input name="country_label" placeholder="override country text"></label>
-          <label>Font family<input name="font_family" placeholder="Google Font, e.g. Noto Sans JP"></label>
-        </div>
-      </fieldset>
-
       <div class="actions">
-        <button type="submit" id="generate">Generate poster</button>
-        <button type="button" id="cancel" class="secondary" hidden>Cancel</button>
-        <span id="status" class="status"></span>
+        <button type="submit" id="load">Load map</button>
+        <button type="button" id="to-customize" class="secondary" hidden>Continue to customize</button>
+        <span id="load-status" class="status"></span>
       </div>
-      <p id="banner" class="banner" hidden></p>
+      <p id="location-banner" class="banner" hidden></p>
     </form>
 
+    <!-- Step 2: Customize -->
+    <section id="customize" class="step-panel" data-panel="customize" hidden>
+      <div class="mode-bar" id="mode-bar">
+        <span class="mode-badge" id="mode-badge"></span>
+        <span id="mode-summary"></span>
+        <button type="button" id="change-location" class="secondary small">Change</button>
+      </div>
+
+      <div class="customize-layout">
+        <form id="customize-form" novalidate>
+          <fieldset>
+            <legend id="theme-legend">Theme</legend>
+            <p class="hint top" id="theme-hint" hidden>Each colour becomes its own layer in the SVG, so you can plot it with a matching pen.</p>
+            <input type="hidden" name="theme" value="terracotta">
+            <div id="themes" class="themes" role="radiogroup" aria-label="Theme"></div>
+            <p class="error" data-error-for="theme"></p>
+          </fieldset>
+
+          <fieldset>
+            <legend>Labels</legend>
+            <div class="grid">
+              <label>Display city<input name="display_city" placeholder="e.g. 東京"></label>
+              <label>Display country<input name="display_country" placeholder="e.g. 日本"></label>
+              <label>Country label<input name="country_label" placeholder="override country text"></label>
+              <label data-mode="print">Font family<input name="font_family" placeholder="Google Font, e.g. Noto Sans JP"></label>
+            </div>
+            <p class="hint" data-mode="plotter">Plotter text uses a single-line pen font. Accents are simplified, and scripts it cannot draw (e.g. CJK) are skipped.</p>
+          </fieldset>
+
+          <fieldset data-mode="print">
+            <legend>File format</legend>
+            <div class="grid">
+              <label>Format
+                <select name="format">
+                  <option value="png" selected>PNG (300 dpi)</option>
+                  <option value="svg">SVG</option>
+                  <option value="pdf">PDF</option>
+                </select>
+              </label>
+            </div>
+            <p class="error" data-error-for="format"></p>
+          </fieldset>
+
+          <fieldset data-mode="plotter" id="plotter-options">
+            <legend>Pen &amp; fills</legend>
+            <div class="grid">
+              <label>Pen width (mm)<input name="pen_width" type="number" min="0.01" step="0.05" value="0.3"></label>
+              <label>Hatch spacing (mm)<input name="hatch_spacing" type="number" min="0.01" step="0.1" placeholder="pen width"></label>
+            </div>
+            <div class="grid fills">
+              <label>Water fill
+                <select name="water_fill">
+                  <option value="hatch" selected>Hatch</option>
+                  <option value="concentric">Concentric</option>
+                </select>
+              </label>
+              <label>Water spacing (mm)<input name="water_spacing" type="number" min="0.01" step="0.1" placeholder="hatch spacing"></label>
+              <label>Parks fill
+                <select name="parks_fill">
+                  <option value="hatch" selected>Hatch</option>
+                  <option value="concentric">Concentric</option>
+                </select>
+              </label>
+              <label>Parks spacing (mm)<input name="parks_spacing" type="number" min="0.01" step="0.1" placeholder="hatch spacing"></label>
+            </div>
+            <label class="inline"><input name="water_outline" type="checkbox"> Outline water</label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Export</legend>
+            <label class="inline"><input name="all_themes" type="checkbox"> <span id="all-themes-label">Export one poster per theme</span></label>
+            <div class="actions tight">
+              <button type="button" id="back" class="secondary">Back to location</button>
+              <button type="button" id="export">Export poster</button>
+              <span id="export-status" class="status"></span>
+            </div>
+          </fieldset>
+          <p id="customize-banner" class="banner" hidden></p>
+        </form>
+
+        <div class="preview-panel">
+          <div class="toolbar" id="editor-toolbar" role="toolbar" aria-label="Editor">
+            <div class="tool-group" role="radiogroup" aria-label="Tool">
+              <button type="button" class="tool" data-tool="move" aria-pressed="true" title="Drag text lines">Move text</button>
+              <button type="button" class="tool" data-tool="rect" aria-pressed="false" title="Drag a rectangle to erase">Erase ▭</button>
+              <button type="button" class="tool" data-tool="free" aria-pressed="false" title="Draw a shape to erase">Erase ✎</button>
+              <button type="button" class="tool" data-tool="select" aria-pressed="false" title="Select an erased region">Select</button>
+              <button type="button" class="tool" data-tool="pan" aria-pressed="false" title="Drag to pan (or use the middle mouse button)">Pan ✋</button>
+            </div>
+            <div class="tool-group">
+              <button type="button" id="delete-region" class="secondary small" disabled>Delete region</button>
+              <button type="button" id="undo" class="secondary small" disabled title="Undo (Ctrl+Z)">Undo</button>
+              <button type="button" id="redo" class="secondary small" disabled title="Redo (Ctrl+Y)">Redo</button>
+              <button type="button" id="reset-edits" class="secondary small" disabled>Reset edits</button>
+            </div>
+          </div>
+
+          <div class="zoom-bar" aria-label="Zoom">
+            <button type="button" id="zoom-out" class="secondary small" title="Zoom out (-)">−</button>
+            <span id="zoom-level" class="zoom-level">100%</span>
+            <button type="button" id="zoom-in" class="secondary small" title="Zoom in (+)">+</button>
+            <button type="button" id="zoom-fit" class="secondary small" title="Fit (0)">Fit</button>
+            <span class="hint">Ctrl + scroll to zoom · middle mouse or Pan to move</span>
+          </div>
+
+          <div class="viewport-wrap">
+            <div id="viewport" class="viewport">
+              <div id="stage" class="stage">
+                <img id="preview-img" alt="Poster preview">
+                <svg id="overlay" class="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+              </div>
+            </div>
+            <div id="preview-busy" class="busy" hidden><span>Rendering…</span></div>
+          </div>
+          <p id="preview-state" class="preview-state"></p>
+          <pre id="preview-log" class="preview-log" hidden></pre>
+
+          <details class="visibility" open>
+            <summary>Show / hide</summary>
+            <div class="toggles">
+              <div>
+                <h3>Text</h3>
+                <div id="text-toggles"></div>
+              </div>
+              <div>
+                <h3>Layers</h3>
+                <div id="layer-toggles"></div>
+              </div>
+            </div>
+          </details>
+        </div>
+      </div>
+    </section>
+
     <section id="job" hidden>
-      <h2>Command</h2>
+      <h2 id="job-title">Progress</h2>
       <div class="command">
         <code id="command"></code>
         <button type="button" id="copy" class="secondary small">Copy</button>
       </div>
-      <h2>Progress</h2>
+      <div class="actions tight">
+        <button type="button" id="cancel" class="secondary small" hidden>Cancel</button>
+      </div>
       <pre id="log"></pre>
       <div id="results" class="cards"></div>
     </section>

@@ -24,6 +24,12 @@ class CacheError(Exception):
     pass
 
 
+class NotCachedError(Exception):
+    """Raised in cache-only mode when the requested data is not in the cache."""
+
+    pass
+
+
 CACHE_DIR = Path(os.environ.get("CACHE_DIR", "cache"))
 CACHE_DIR.mkdir(exist_ok=True)
 

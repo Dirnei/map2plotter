@@ -316,3 +316,148 @@ def test_long_text_fits_page():
     lines, _ = ps.layout_text(texts, 200, 250, 0.3)
     xs = [x for p in lines for x, _ in p]
     assert min(xs) >= 200 * 0.05 - 0.5 and max(xs) <= 200 * 0.95 + 0.5
+
+
+# --- Fill modes, water outline, edits ----------------------------------------
+
+import poster_edits  # noqa: E402
+
+
+def test_concentric_rings_closed_inside_and_spaced():
+    area = box(0, 0, 20, 10)
+    rings = ps.concentric(area, 1.0, 0.3)
+    assert len(rings) >= 4
+    for ring in rings:
+        assert ring[0] == ring[-1]
+        assert area.buffer(1e-9).contains(LineString(ring))
+    # First ring at half a pen width, next ones one spacing further in
+    first, second = LineString(rings[0]), LineString(rings[1])
+    assert first.distance(area.exterior) == pytest.approx(0.15, abs=1e-6)
+    assert second.distance(first) == pytest.approx(1.0, abs=1e-6)
+
+
+def test_concentric_follows_holes():
+    area = box(0, 0, 20, 20).difference(box(8, 8, 12, 12))
+    rings = ps.concentric(area, 1.0, 0.3)
+    hole = box(8, 8, 12, 12)
+    near_hole = [r for r in rings if LineString(r).distance(hole) == pytest.approx(0.15, abs=1e-2)]
+    assert near_hole, "expected a contour around the hole"
+
+
+def test_fill_area_unchanged_by_refactor():
+    area = box(0, 0, 3, 1)
+    rings = ps.fill_area(area, 0.3)
+    assert rings == ps.concentric(area, 0.3, 0.3)
+
+
+def test_render_areas_concentric_mode_and_spacing():
+    area = box(10, 10, 60, 40)
+    lines = ps.render_areas(area, 2.0, 45, Polygon(), box(0, 0, 100, 100), mode="concentric", pen=0.3)
+    assert all(ln[0] == ln[-1] for ln in lines)  # closed contours, no straight hatch lines
+    assert LineString(lines[1]).distance(LineString(lines[0])) == pytest.approx(2.0, abs=1e-6)
+
+
+def test_render_areas_concentric_excludes_roads():
+    area = box(10, 10, 60, 40)
+    road = box(30, 0, 32, 100)
+    lines = ps.render_areas(area, 1.0, 45, road, box(0, 0, 100, 100), mode="concentric", pen=0.3)
+    inner = road.buffer(-1e-6)
+    assert lines and not any(LineString(ln).intersects(inner) for ln in lines if len(ln) >= 2)
+
+
+def test_per_area_spacing_settings():
+    s = ps.PlotterSettings(300, 400, 0.3, 0.5, water_spacing=0.6)
+    assert s.spacing("water") == 0.6 and s.spacing("parks") == 0.5
+    assert s.fill_mode("water") == "hatch"
+
+
+def test_water_outline_includes_island():
+    lake = box(10, 10, 60, 60).difference(box(30, 30, 40, 40))
+    lines = ps.render_areas(lake, 1.0, 45, Polygon(), box(0, 0, 100, 100), pen=0.3, outline=True)
+    outer = [ln for ln in lines if LineString(ln).equals(box(10, 10, 60, 60).exterior)]
+    island = [ln for ln in lines if LineString(ln).equals(box(30, 30, 40, 40).exterior)]
+    assert outer and island
+    # Fill keeps one spacing away from the outline
+    fill = [ln for ln in lines if ln not in outer + island]
+    assert min(LineString(ln).distance(lake.boundary) for ln in fill) >= 1.0 - 1e-2
+
+
+def test_water_outline_not_through_roads():
+    lake = box(10, 10, 60, 60)
+    bridge = box(30, 0, 33, 100)
+    lines = ps.render_areas(lake, 1.0, 45, bridge, box(0, 0, 100, 100), pen=0.3, outline=True)
+    inner = bridge.buffer(-1e-6)
+    assert not any(LineString(ln).intersects(inner) for ln in lines)
+
+
+def test_no_outline_by_default():
+    lake = box(10, 10, 60, 60)
+    lines = ps.render_areas(lake, 1.0, 45, Polygon(), box(0, 0, 100, 100), pen=0.3)
+    assert not any(LineString(ln).equals(lake.exterior) for ln in lines)
+
+
+def _paths_by_label(root):
+    out = {}
+    for g in root.findall(f"{SVG}g"):
+        pts = []
+        for path in g.iter(f"{SVG}path"):
+            tokens = path.get("d").replace("M", "").replace("L", "").split()
+            pts.append([tuple(map(float, t.split(","))) for t in tokens])
+        out[g.get(f"{INK}label")] = pts
+    return out
+
+
+def test_render_erase_region(tmp_path):
+    roads, water, parks, xlim, ylim = _synthetic_inputs()
+    settings = ps.PlotterSettings(300, 400, 0.3, 0.3)
+    region = box(20, 20, 280, 300)
+    edits = poster_edits.parse_edits({"erase": [[list(p) for p in region.exterior.coords[:-1]]]})
+    out = tmp_path / "poster.svg"
+    ps.render(out, roads, water, parks, xlim, ylim, THEME, TEXTS, settings, edits)
+    inner = region.buffer(-0.01)
+    layers = _paths_by_label(_parse(out))
+    text_layer = [paths for label, paths in layers.items() if "text" in label][0]
+    assert text_layer, "text must not be erased"
+    for label, paths in layers.items():
+        if "text" in label:
+            continue
+        for pts in paths:
+            assert not LineString(pts).intersects(inner), label
+
+
+def test_render_hidden_parks_layer(tmp_path):
+    roads, water, parks, xlim, ylim = _synthetic_inputs()
+    settings = ps.PlotterSettings(300, 400, 0.3, 0.3)
+    edits = poster_edits.parse_edits({"hidden_layers": ["parks"]})
+    out = tmp_path / "poster.svg"
+    ps.render(out, roads, water, parks, xlim, ylim, THEME, TEXTS, settings, edits)
+    labels = [g.get(f"{INK}label") for g in _parse(out).findall(f"{SVG}g")]
+    assert not any("parks" in label for label in labels)
+    assert any("water" in label for label in labels)
+
+
+def test_text_offset_moves_city():
+    base, _ = ps._layout(TEXTS, 300, 400, 0.3)
+    edits = poster_edits.parse_edits({"text": {"city": {"dy": -10, "dx": 5}}})
+    moved_lines, moved_boxes = ps._layout(TEXTS, 300, 400, 0.3, edits)
+    _, base_boxes = ps._layout(TEXTS, 300, 400, 0.3)
+    bx, by = base_boxes["city"].bounds[:2]
+    mx, my = moved_boxes["city"].bounds[:2]
+    assert mx - bx == pytest.approx(5) and my - by == pytest.approx(-10)
+    assert moved_boxes["country"].equals(base_boxes["country"])
+
+
+def test_hidden_coords_keeps_attribution():
+    edits = poster_edits.parse_edits({"text": {"coords": {"hidden": True}}})
+    _, boxes = ps._layout(TEXTS, 300, 400, 0.3, edits)
+    assert "coords" not in boxes and "attribution" in boxes
+    _, knockout = ps.layout_text(TEXTS, 300, 400, 0.3, edits)
+    _, full = ps.layout_text(TEXTS, 300, 400, 0.3)
+    assert knockout.area < full.area
+
+
+def test_text_boxes_default_positions():
+    boxes = ps.text_boxes(TEXTS, 300, 400)
+    assert set(boxes) >= {"city", "country", "coords", "divider", "attribution"}
+    minx, miny, maxx, maxy = boxes["city"]
+    assert minx < 150 < maxx and miny < 400 * (1 - ps.CITY_Y) < maxy

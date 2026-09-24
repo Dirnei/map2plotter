@@ -27,17 +27,23 @@ from font_management import load_fonts
 import osm_cache
 import overpass_servers
 import plotter_svg
+import poster_edits
 from matplotlib.font_manager import FontProperties
+from matplotlib.patches import PathPatch
+from matplotlib.path import Path as MplPath
 from networkx import MultiDiGraph
-from osm_cache import CacheError, cache_get, cache_set
+from osm_cache import CacheError, NotCachedError, cache_get, cache_set
 from osmnx._errors import InsufficientResponseError
 from shapely.geometry import Point
+from shapely.geometry.polygon import orient
 from tqdm import tqdm
 
 
 # OpenStreetMap server: 'auto' (health check + fallback) or an Overpass API base URL
 OVERPASS_CHOICE = overpass_servers.AUTO
 _overpass_order = None  # Servers to try, resolved on the first download
+# --cache-only: never download map data or geocode; fail if it is not cached
+CACHE_ONLY = False
 
 THEMES_DIR = "themes"
 FONTS_DIR = "fonts"
@@ -277,6 +283,11 @@ def get_coordinates(city, country):
     if cached:
         print(f"✓ Using cached coordinates for {city}, {country}")
         return cached
+    if CACHE_ONLY:
+        raise NotCachedError(
+            f"Coordinates for {city}, {country} are not cached; run without --cache-only "
+            "or pass --latitude/--longitude"
+        )
 
     print("Looking up coordinates...")
     geolocator = Nominatim(user_agent="city_map_poster", timeout=10)
@@ -391,6 +402,8 @@ def fetch_graph(point, dist) -> MultiDiGraph:
     lat, lon = point
 
     def download(fetch_dist):
+        if CACHE_ONLY:
+            raise NotCachedError("street network")
         g = overpass_download(
             lambda: ox.graph_from_point(
                 point, dist=fetch_dist, dist_type='bbox', network_type='all', truncate_by_edge=True
@@ -404,6 +417,10 @@ def fetch_graph(point, dist) -> MultiDiGraph:
         g, cached = osm_cache.load_area(
             f"graph_{lat}_{lon}", "", dist, download, lambda g, d: osm_cache.crop_graph(g, point, d)
         )
+    except NotCachedError as e:
+        raise RuntimeError(
+            "Map data for this area is not cached; run without --cache-only to download it"
+        ) from e
     except overpass_servers.OverpassError as e:
         raise RuntimeError(f"Failed to retrieve street network data from OpenStreetMap: {e}") from e
     except Exception as e:
@@ -433,6 +450,8 @@ def fetch_features(point, dist, tags, name) -> GeoDataFrame | None:
     tag_str = "_".join(tags.keys())
 
     def download(fetch_dist):
+        if CACHE_ONLY:
+            raise NotCachedError(f"{name} data is not cached")
         try:
             data = overpass_download(lambda: ox.features_from_point(point, tags=tags, dist=fetch_dist))
         except InsufficientResponseError:
@@ -496,8 +515,25 @@ def format_coordinates(lat, lon):
     return coords
 
 
+def add_erase_patches(ax, edits, width_mm, height_mm, color):
+    """Cover the edit list's erase regions with the background colour (page mm -> axes fractions)."""
+    area = edits.erase_area(width_mm, height_mm)
+    for poly in getattr(area, "geoms", [area]):
+        if poly.is_empty or poly.geom_type != "Polygon":
+            continue
+        poly = orient(poly)  # CCW exterior, CW holes: nonzero fill keeps holes open
+        verts, codes = [], []
+        for ring in [poly.exterior, *poly.interiors]:
+            pts = [(x / width_mm, 1 - y / height_mm) for x, y in ring.coords]
+            verts += pts
+            codes += [MplPath.MOVETO] + [MplPath.LINETO] * (len(pts) - 2) + [MplPath.CLOSEPOLY]
+        ax.add_patch(PathPatch(
+            MplPath(verts, codes), transform=ax.transAxes, facecolor=color, edgecolor="none", zorder=9,
+        ))
+
+
 def create_plotter_poster(g, water, parks, point, compensated_dist, output_file,
-                          display_city, display_country, plotter_settings):
+                          display_city, display_country, plotter_settings, edits=None):
     """
     Render the fetched map data as a plotter-ready SVG.
 
@@ -511,6 +547,7 @@ def create_plotter_poster(g, water, parks, point, compensated_dist, output_file,
         display_city: City text for the poster
         display_country: Country text for the poster
         plotter_settings: plotter_svg.PlotterSettings
+        edits: Optional poster_edits.Edits
     """
     print("Rendering plotter paths...")
     width_mm, height_mm = plotter_settings.width_mm, plotter_settings.height_mm
@@ -528,7 +565,7 @@ def create_plotter_poster(g, water, parks, point, compensated_dist, output_file,
     }
 
     plotter_svg.render(
-        output_file, edges, water, parks, crop_xlim, crop_ylim, THEME, texts, plotter_settings
+        output_file, edges, water, parks, crop_xlim, crop_ylim, THEME, texts, plotter_settings, edits
     )
     print(f"✓ Done! Plotter SVG saved as {output_file}")
 
@@ -548,6 +585,8 @@ def create_poster(
     display_country=None,
     fonts=None,
     plotter_settings=None,
+    dpi=300,
+    edits=None,
 ):
     """
     Generate a complete map poster with roads, water, parks, and typography.
@@ -567,6 +606,8 @@ def create_poster(
         country_label: Optional override for country text on poster
         _name_label: Optional override for city name (unused, reserved for future use)
         plotter_settings: plotter_svg.PlotterSettings, required for the 'plotter' format
+        dpi: Resolution of PNG output
+        edits: Optional poster_edits.Edits (erase regions, text offsets, hidden layers)
 
     Raises:
         RuntimeError: If street network data cannot be retrieved
@@ -619,9 +660,12 @@ def create_poster(
     if output_format.lower() == "plotter":
         create_plotter_poster(
             g, water, parks, point, compensated_dist, output_file,
-            display_city, display_country, plotter_settings,
+            display_city, display_country, plotter_settings, edits,
         )
         return
+
+    def hidden(key):
+        return edits is not None and edits.layer_hidden(key)
 
     # 2. Setup Plot
     print("Rendering map...")
@@ -632,10 +676,17 @@ def create_poster(
 
     # Project graph to a metric CRS so distances and aspect are linear (meters)
     g_proj = ox.project_graph(g)
+    hidden_roads = {key for key, _, _ in plotter_svg.ROAD_CLASSES if hidden(key)}
+    if hidden_roads:
+        g_proj = g_proj.copy()
+        g_proj.remove_edges_from([
+            (u, v, k) for u, v, k, d in g_proj.edges(keys=True, data=True)
+            if plotter_svg.classify_highway(d.get("highway", "unclassified")) in hidden_roads
+        ])
 
     # 3. Plot Layers
     # Layer 1: Polygons (filter to only plot polygon/multipolygon geometries, not points)
-    if water is not None and not water.empty:
+    if water is not None and not water.empty and not hidden("water"):
         # Filter to only polygon/multipolygon geometries to avoid point features showing as dots
         water_polys = water[water.geometry.type.isin(["Polygon", "MultiPolygon"])]
         if not water_polys.empty:
@@ -646,7 +697,7 @@ def create_poster(
                 water_polys = water_polys.to_crs(g_proj.graph['crs'])
             water_polys.plot(ax=ax, facecolor=THEME['water'], edgecolor='none', zorder=0.5)
 
-    if parks is not None and not parks.empty:
+    if parks is not None and not parks.empty and not hidden("parks"):
         # Filter to only polygon/multipolygon geometries to avoid point features showing as dots
         parks_polys = parks[parks.geometry.type.isin(["Polygon", "MultiPolygon"])]
         if not parks_polys.empty:
@@ -665,17 +716,29 @@ def create_poster(
     fig_width, fig_height = fig.get_size_inches()
     crop_xlim, crop_ylim = get_crop_limits(g_proj, point, fig_width / fig_height, compensated_dist)
     # Plot the projected graph and then apply the cropped limits
-    ox.plot_graph(
-        g_proj, ax=ax, bgcolor=THEME['bg'],
-        node_size=0,
-        edge_color=edge_colors,
-        edge_linewidth=edge_widths,
-        show=False,
-        close=False,
-    )
+    if g_proj.number_of_edges():
+        ox.plot_graph(
+            g_proj, ax=ax, bgcolor=THEME['bg'],
+            node_size=0,
+            edge_color=edge_colors,
+            edge_linewidth=edge_widths,
+            show=False,
+            close=False,
+        )
     ax.set_aspect("equal", adjustable="box")
     ax.set_xlim(crop_xlim)
     ax.set_ylim(crop_ylim)
+
+    # Erase regions: background-coloured patches above the map, below fades and text
+    if edits is not None:
+        add_erase_patches(ax, edits, width_mm, height_mm, THEME["bg"])
+
+    def text_pos(key, x, y):
+        """Axes position of a text line after its edit, or None when hidden."""
+        edit = edits.text_edit(key) if edits is not None else poster_edits.TextEdit()
+        if edit.hidden:
+            return None
+        return x + edit.dx / width_mm, y - edit.dy / height_mm
 
     # Layer 3: Gradients (Top and Bottom)
     create_gradient_fade(ax, THEME['gradient_color'], location='bottom', zorder=10)
@@ -720,50 +783,55 @@ def create_poster(
         )
 
     # --- BOTTOM TEXT ---
-    ax.text(
-        0.5,
-        0.14,
-        spaced_city,
-        transform=ax.transAxes,
-        color=THEME["text"],
-        ha="center",
-        fontproperties=font_main_adjusted,
-        zorder=11,
-    )
+    pos = text_pos("city", 0.5, 0.14)
+    if pos:
+        ax.text(
+            *pos,
+            spaced_city,
+            transform=ax.transAxes,
+            color=THEME["text"],
+            ha="center",
+            fontproperties=font_main_adjusted,
+            zorder=11,
+        )
 
-    ax.text(
-        0.5,
-        0.10,
-        display_country.upper(),
-        transform=ax.transAxes,
-        color=THEME["text"],
-        ha="center",
-        fontproperties=font_sub,
-        zorder=11,
-    )
+    pos = text_pos("country", 0.5, 0.10)
+    if pos:
+        ax.text(
+            *pos,
+            display_country.upper(),
+            transform=ax.transAxes,
+            color=THEME["text"],
+            ha="center",
+            fontproperties=font_sub,
+            zorder=11,
+        )
 
     coords = format_coordinates(*point)
 
-    ax.text(
-        0.5,
-        0.07,
-        coords,
-        transform=ax.transAxes,
-        color=THEME["text"],
-        alpha=0.7,
-        ha="center",
-        fontproperties=font_coords,
-        zorder=11,
-    )
+    pos = text_pos("coords", 0.5, 0.07)
+    if pos:
+        ax.text(
+            *pos,
+            coords,
+            transform=ax.transAxes,
+            color=THEME["text"],
+            alpha=0.7,
+            ha="center",
+            fontproperties=font_coords,
+            zorder=11,
+        )
 
-    ax.plot(
-        [0.4, 0.6],
-        [0.125, 0.125],
-        transform=ax.transAxes,
-        color=THEME["text"],
-        linewidth=1 * scale_factor,
-        zorder=11,
-    )
+    pos = text_pos("divider", 0.5, 0.125)
+    if pos:
+        ax.plot(
+            [pos[0] - 0.1, pos[0] + 0.1],
+            [pos[1], pos[1]],
+            transform=ax.transAxes,
+            color=THEME["text"],
+            linewidth=1 * scale_factor,
+            zorder=11,
+        )
 
     # --- ATTRIBUTION (bottom right) ---
     if FONTS:
@@ -793,7 +861,7 @@ def create_poster(
 
     # DPI matters mainly for raster formats
     if fmt == "png":
-        save_kwargs["dpi"] = 300
+        save_kwargs["dpi"] = dpi
 
     plt.savefig(output_file, format=fmt, **save_kwargs)
 
@@ -841,6 +909,12 @@ Examples:
   # Pen plotter SVG (A3, 0.3 mm pen)
   python create_map_poster.py -c "Venice" -C "Italy" -d 3000 -f plotter -W 297 -H 420
 
+  # Plotter SVG with outlined, concentric water
+  python create_map_poster.py -c "Venice" -C "Italy" -d 3000 -f plotter --water-outline --water-fill concentric
+
+  # Quick low-resolution preview from cached data only
+  python create_map_poster.py -c "Venice" -C "Italy" -d 3000 --cache-only --dpi 60 -o preview.png
+
   # List themes
   python create_map_poster.py --list-themes
 
@@ -858,6 +932,15 @@ Options:
   --overpass-url    OpenStreetMap server URL or 'auto' (default: $OVERPASS_URL or auto)
   --pen-width       Plotter pen width in mm (default: 0.3)
   --hatch-spacing   Plotter hatch spacing for water/parks in mm (default: pen width)
+  --water-fill      Plotter water fill: hatch or concentric (default: hatch)
+  --parks-fill      Plotter parks fill: hatch or concentric (default: hatch)
+  --water-spacing   Plotter line spacing for water in mm (default: hatch spacing)
+  --parks-spacing   Plotter line spacing for parks in mm (default: hatch spacing)
+  --water-outline   Plotter: stroke the outline of water areas
+  --cache-only      Never download map data or geocode; fail if not cached
+  --output, -o      Write the poster to this file
+  --dpi             PNG resolution (default: 300)
+  --edits           JSON edit list (erase regions, text offsets, hidden layers)
 
 Distance guide:
   4000-6000m   Small/dense cities (Venice, Amsterdam old center)
@@ -895,7 +978,8 @@ def list_themes():
         print()
 
 
-if __name__ == "__main__":
+def build_parser():
+    """The command-line interface."""
     parser = argparse.ArgumentParser(
         description="Generate beautiful map posters for any city",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1012,10 +1096,65 @@ Examples:
         help="Plotter hatch line spacing in mm for water/parks (default: pen width)",
     )
 
-    args = parser.parse_args()
+    parser.add_argument(
+        "--water-fill",
+        choices=plotter_svg.FILL_MODES,
+        default="hatch",
+        help="Plotter fill for water: 'hatch' (parallel lines) or 'concentric' (contours) (default: hatch)",
+    )
+    parser.add_argument(
+        "--parks-fill",
+        choices=plotter_svg.FILL_MODES,
+        default="hatch",
+        help="Plotter fill for parks: 'hatch' or 'concentric' (default: hatch)",
+    )
+    parser.add_argument(
+        "--water-spacing",
+        type=float,
+        help="Plotter line spacing in mm for water (default: hatch spacing)",
+    )
+    parser.add_argument(
+        "--parks-spacing",
+        type=float,
+        help="Plotter line spacing in mm for parks (default: hatch spacing)",
+    )
+    parser.add_argument(
+        "--water-outline",
+        action="store_true",
+        help="Plotter: also stroke the outline of water areas",
+    )
+    parser.add_argument(
+        "--cache-only",
+        action="store_true",
+        help="Never download map data or geocode; fail if the data is not cached",
+    )
+    parser.add_argument(
+        "--output",
+        "-o",
+        help="Write the poster to this file instead of posters/<city>_<theme>_<timestamp>",
+    )
+    parser.add_argument(
+        "--dpi",
+        type=int,
+        default=300,
+        help="Resolution of PNG output (default: 300)",
+    )
+    parser.add_argument(
+        "--edits",
+        help="JSON edit list (erase regions, text offsets, hidden layers) to apply",
+    )
+    return parser
+
+
+def main(argv=None):
+    """Run the poster generator CLI."""
+    global THEME, OVERPASS_CHOICE, CACHE_ONLY
+    argv = sys.argv[1:] if argv is None else argv
+    parser = build_parser()
+    args = parser.parse_args(argv)
 
     # If no arguments provided, show examples
-    if len(sys.argv) == 1:
+    if not argv:
         print_examples()
         sys.exit(0)
 
@@ -1035,9 +1174,10 @@ Examples:
     except ValueError as e:
         print(f"Error: --overpass-url: {e}")
         sys.exit(1)
+    CACHE_ONLY = args.cache_only
 
     # Validate sizes and plotter options
-    for name in ("width", "height", "pen_width", "hatch_spacing"):
+    for name in ("width", "height", "pen_width", "hatch_spacing", "water_spacing", "parks_spacing", "dpi"):
         value = getattr(args, name)
         if value is not None and value <= 0:
             print(f"Error: --{name.replace('_', '-')} must be greater than 0.")
@@ -1053,13 +1193,53 @@ Examples:
 
     plotter_settings = None
     hatch_spacing = args.hatch_spacing if args.hatch_spacing is not None else args.pen_width
-    if hatch_spacing < args.pen_width:
-        print(f"Error: --hatch-spacing ({hatch_spacing}) must not be less than --pen-width ({args.pen_width}).")
-        sys.exit(1)
+    for flag, value in (
+        ("--hatch-spacing", hatch_spacing),
+        ("--water-spacing", args.water_spacing),
+        ("--parks-spacing", args.parks_spacing),
+    ):
+        if value is not None and value < args.pen_width:
+            print(f"Error: {flag} ({value}) must not be less than --pen-width ({args.pen_width}).")
+            sys.exit(1)
     if args.format == "plotter":
-        plotter_settings = plotter_svg.PlotterSettings(args.width, args.height, args.pen_width, hatch_spacing)
-    elif args.hatch_spacing is not None:
-        print("⚠ --hatch-spacing only applies to --format plotter; ignoring.")
+        plotter_settings = plotter_svg.PlotterSettings(
+            args.width, args.height, args.pen_width, hatch_spacing,
+            water_fill=args.water_fill,
+            parks_fill=args.parks_fill,
+            water_spacing=args.water_spacing,
+            parks_spacing=args.parks_spacing,
+            water_outline=args.water_outline,
+        )
+    else:
+        plotter_only = [
+            flag for flag, used in (
+                ("--hatch-spacing", args.hatch_spacing is not None),
+                ("--water-spacing", args.water_spacing is not None),
+                ("--parks-spacing", args.parks_spacing is not None),
+                ("--water-fill", args.water_fill != "hatch"),
+                ("--parks-fill", args.parks_fill != "hatch"),
+                ("--water-outline", args.water_outline),
+            ) if used
+        ]
+        if plotter_only:
+            print(f"⚠ {', '.join(plotter_only)} only apply to --format plotter; ignoring.")
+
+    if args.output:
+        expected = {"png": ".png", "svg": ".svg", "pdf": ".pdf", "plotter": ".svg"}[args.format]
+        if args.all_themes:
+            print("Error: --output cannot be combined with --all-themes.")
+            sys.exit(1)
+        if os.path.splitext(args.output)[1].lower() != expected:
+            print(f"Error: --output must end in '{expected}' for --format {args.format}.")
+            sys.exit(1)
+
+    edits = None
+    if args.edits:
+        try:
+            edits = poster_edits.load_edits(args.edits)
+        except poster_edits.EditsError as e:
+            print(f"Error: --edits: {e}")
+            sys.exit(1)
 
     available_themes = get_available_themes()
     if not available_themes:
@@ -1098,7 +1278,11 @@ Examples:
 
         for theme_name in themes_to_generate:
             THEME = load_theme(theme_name)
-            output_file = generate_output_filename(args.city, theme_name, args.format)
+            if args.output:
+                output_file = args.output
+                os.makedirs(os.path.dirname(os.path.abspath(output_file)), exist_ok=True)
+            else:
+                output_file = generate_output_filename(args.city, theme_name, args.format)
             create_poster(
                 args.city,
                 args.country,
@@ -1113,6 +1297,8 @@ Examples:
                 display_country=args.display_country,
                 fonts=custom_fonts,
                 plotter_settings=plotter_settings,
+                dpi=args.dpi,
+                edits=edits,
             )
 
         print("\n" + "=" * 50)
@@ -1125,3 +1311,7 @@ Examples:
 
         traceback.print_exc()
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
