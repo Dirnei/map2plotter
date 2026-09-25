@@ -442,3 +442,52 @@ header, main { max-width: 1280px; }
   border-radius: 6px;
   padding: 6px 10px;
 }
+
+/* --- Pens (plotter) ---------------------------------------------------------- */
+
+.pen-count { font-weight: 400; color: var(--muted); font-size: 0.9rem; }
+
+.pen-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.pens {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 6px 16px;
+}
+
+.pen {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.pen input[type="color"] {
+  width: 34px;
+  height: 26px;
+  padding: 0 2px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.pen-name { flex: 1; font-size: 0.9rem; }
+.pen .pen-visible { margin: 0; font-size: 0.8rem; color: var(--muted); }
+.pen.off .pen-name, .pen.off input[type="color"] { opacity: 0.4; }
+
+.png-size { font-size: 0.85rem; color: var(--muted); margin: 8px 0 0; }
+.png-size.warn { color: #9a6700; }
+.png-size.over { color: var(--error); }
+.png-size button { margin: 0 4px; }
+
+.preview-svg { position: absolute; inset: 0; }
+.preview-svg > svg { width: 100%; height: 100%; display: block; }
+.stage.outdated .preview-svg { opacity: 0.45; }

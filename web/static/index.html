@@ -25,7 +25,7 @@
           <label class="mode-card">
             <input type="radio" name="mode" value="print" checked>
             <span class="mode-title">Print poster</span>
-            <span class="mode-desc">Coloured, filled map with gradients and your font. Exported as PNG, SVG or PDF, up to 500 mm per side.</span>
+            <span class="mode-desc">Coloured, filled map with gradients and your font. Exported as PNG, SVG or PDF, at any size.</span>
           </label>
           <label class="mode-card">
             <input type="radio" name="mode" value="plotter">
@@ -93,12 +93,24 @@
 
       <div class="customize-layout">
         <form id="customize-form" novalidate>
-          <fieldset>
-            <legend id="theme-legend">Theme</legend>
-            <p class="hint top" id="theme-hint" hidden>Each colour becomes its own layer in the SVG, so you can plot it with a matching pen.</p>
+          <fieldset data-mode="print">
+            <legend>Theme</legend>
             <input type="hidden" name="theme" value="terracotta">
             <div id="themes" class="themes" role="radiogroup" aria-label="Theme"></div>
             <p class="error" data-error-for="theme"></p>
+          </fieldset>
+
+          <fieldset data-mode="plotter">
+            <legend>Pens <span id="pen-count" class="pen-count"></span></legend>
+            <p class="hint top">Pick a pen colour per element. Elements with the same colour share a pen and a layer in the SVG. Colour changes show at once, without re-rendering.</p>
+            <div class="pen-presets">
+              <label>Start from theme
+                <select id="pen-theme"><option value="">Choose…</option></select>
+              </label>
+              <button type="button" id="single-pen" class="secondary small">Single pen (black)</button>
+            </div>
+            <div id="pens" class="pens"></div>
+            <p class="error" data-error-for="colors"></p>
           </fieldset>
 
           <fieldset>
@@ -117,12 +129,14 @@
             <div class="grid">
               <label>Format
                 <select name="format">
-                  <option value="png" selected>PNG (300 dpi)</option>
+                  <option value="png" selected>PNG</option>
                   <option value="svg">SVG</option>
                   <option value="pdf">PDF</option>
                 </select>
               </label>
+              <label id="dpi-label">PNG resolution (dpi)<input name="dpi" type="number" min="1" step="1" value="300"></label>
             </div>
+            <p id="png-size" class="png-size" hidden></p>
             <p class="error" data-error-for="format"></p>
           </fieldset>
 
@@ -192,6 +206,7 @@
             <div id="viewport" class="viewport">
               <div id="stage" class="stage">
                 <img id="preview-img" alt="Poster preview">
+                <div id="preview-svg" class="preview-svg" hidden></div>
                 <svg id="overlay" class="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
               </div>
             </div>
@@ -207,7 +222,7 @@
                 <h3>Text</h3>
                 <div id="text-toggles"></div>
               </div>
-              <div>
+              <div id="layer-toggles-panel">
                 <h3>Layers</h3>
                 <div id="layer-toggles"></div>
               </div>

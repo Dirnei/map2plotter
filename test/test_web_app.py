@@ -148,6 +148,8 @@ def test_location_validation(env, data, field):
     ({"theme": "missing"}, "theme"),
     ({"format": "gif"}, "format"),
     ({"edits": {"hidden_layers": ["buildings"]}}, "edits"),
+    ({"colors": {"buildings": "#000000"}}, "colors"),
+    ({"colors": {"water": "blue"}}, "colors"),
 ])
 def test_customize_validation(env, data, field):
     _, errors = web_app.validate_customize(data)
@@ -159,11 +161,33 @@ def test_unknown_theme_allowed_with_all_themes(env):
     assert not errors
 
 
-def test_print_size_limited_in_location(env):
-    _, errors = web_app.validate_location({**PARIS, "width": 600})
-    assert "width" in errors and "plotter" in errors["width"]
+def test_any_positive_print_size_accepted(env):
+    loc, errors = web_app.validate_location({**PARIS, "width": 841, "height": 1189})
+    assert not errors and loc.mode == "print"
+    _, errors = web_app.validate_location({**PARIS, "width": 0})
+    assert "width" in errors
     loc, errors = web_app.validate_location({**PARIS, "mode": "plotter", "width": 841, "height": 1189})
     assert not errors and loc.mode == "plotter"
+
+
+def test_png_export_pixel_limit(env):
+    client, _, fake_cli = env
+    load_paris(client, fake_cli, width=1000, height=1500)
+    res = client.post("/api/export", json={"format": "png"})
+    assert res.status_code == 422 and "293 dpi" in res.json()["errors"]["dpi"]
+    # Previews are rendered scaled down and are not limited
+    job = client.post("/api/preview", json={"format": "png"}).json()
+    _, status = run_to_end(client, job["id"])
+    assert status["status"] == "succeeded"
+    args = web_app.CURRENT_JOB.args
+    assert args[args.index("--dpi") + 1] == str(web_app.preview_dpi(*web_app.preview_size(web_app.SESSION.location)))
+    # A fitting dpi, or a vector format, is accepted
+    job = client.post("/api/export", json={"format": "png", "dpi": 293}).json()
+    run_to_end(client, job["id"])
+    assert "--dpi 293" in job["command"]
+    job = client.post("/api/export", json={"format": "svg"}).json()
+    run_to_end(client, job["id"])
+    assert "--format svg" in job["command"] and "--dpi" not in job["command"]
 
 
 def test_format_follows_workflow(env):
@@ -489,3 +513,15 @@ def test_server_check(env, monkeypatch):
     assert len(body) == len(web_app.overpass_servers.SERVERS) + 1
     assert body[1]["ok"] and not body[0]["ok"]
     assert client.post("/api/overpass/check", json={"custom": "nope"}).status_code == 422
+
+
+def test_export_passes_only_changed_colors(env):
+    client, _, fake_cli = env
+    load_paris(client, fake_cli, mode="plotter")
+    base = web_app.theme_colors("terracotta")
+    colors = {"bg": base["bg"], "water": "#1F5FA8"}  # bg unchanged, water changed
+    job = client.post("/api/export", json={"theme": "terracotta", "colors": colors}).json()
+    run_to_end(client, job["id"])
+    args = web_app.CURRENT_JOB.args
+    assert [args[i + 1] for i, a in enumerate(args) if a == "--color"] == ["water=#1f5fa8"]
+    assert "--color 'water=#1f5fa8'" in job["command"]

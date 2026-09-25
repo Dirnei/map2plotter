@@ -29,8 +29,8 @@
 
 *Alternative:* keep an mm limit but raise it. That is rejected, because the cost depends on dpi, not mm.
 
-### 2. Validate in the CLI; the web mirrors it
-The CLI check runs with the other argument validation, before geocoding, and is the authority. `web_app.validate_customize` imports nothing from the CLI (a heavy import). It duplicates the two constants and the rounding, so it can answer quickly. A test asserts that the two agree for a set of sizes.
+### 2. One shared implementation
+The limit maths lives in a small module, `poster_size.py` (constants, `png_pixels`, `max_png_dpi`, `png_limit_error`). The CLI and `web_app` both import it; the web app avoids the heavy CLI import. The CLI check runs with the other argument validation, before geocoding. The server applies the same check on export requests only.
 
 ### 3. The web UI: dpi field in Customize, limit feedback computed client-side
 - The dpi field is shown for PNG in the print workflow.

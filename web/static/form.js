@@ -2,7 +2,7 @@
 
 const STORAGE_KEY = "maptoposter-form-v3";  // v3: two-step form
 const NUMBER_FIELDS = [
-  "distance", "width", "height", "pen_width", "hatch_spacing", "water_spacing", "parks_spacing",
+  "distance", "width", "height", "pen_width", "hatch_spacing", "water_spacing", "parks_spacing", "dpi",
 ];
 
 // --- Storage (per-viewer convenience only) ---------------------------------

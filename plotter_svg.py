@@ -564,34 +564,33 @@ def _fmt(value):
 def build_layers(entries):
     """
     Group polylines into one layer per colour, keeping first-appearance order.
+    Inside a layer, each theme key keeps its own polylines.
 
     Args:
         entries: list of (theme key, colour hex, polylines)
 
     Returns:
-        list of (colour, [keys], polylines)
+        list of (colour, [(key, polylines), ...])
     """
     layers = {}
     for key, color, polylines in entries:
         if not polylines:
             continue
-        color = color.lower()
-        if color not in layers:
-            layers[color] = ([], [])
-        keys, lines = layers[color]
-        if key not in keys:
-            keys.append(key)
-        lines.extend(polylines)
-    return [(color, keys, lines) for color, (keys, lines) in layers.items()]
+        groups = layers.setdefault(color.lower(), {})
+        groups.setdefault(key, []).extend(polylines)
+    return [(color, list(groups.items())) for color, groups in layers.items()]
 
 
 def write_svg(output_file, layers, settings):
     """
     Write layers of polylines as a millimetre-scaled, stroke-only SVG.
 
+    Each colour becomes an Inkscape layer (one pen); inside it, each element type
+    (water, parks, a road class, text) gets its own group labelled with its key.
+
     Args:
         output_file: Destination path
-        layers: list of (colour, [keys], polylines) from build_layers
+        layers: list of (colour, [(key, polylines), ...]) from build_layers
         settings: PlotterSettings
     """
     ET.register_namespace("", SVG_NS)
@@ -603,21 +602,23 @@ def write_svg(output_file, layers, settings):
         "height": f"{H}mm",
         "viewBox": f"0 0 {W} {H}",
     })
-    for n, (color, keys, polylines) in enumerate(layers, start=1):
-        group = ET.SubElement(root, f"{{{SVG_NS}}}g", {
+    for n, (color, groups) in enumerate(layers, start=1):
+        layer = ET.SubElement(root, f"{{{SVG_NS}}}g", {
             "id": f"layer{n}",
             f"{{{INKSCAPE_NS}}}groupmode": "layer",
-            f"{{{INKSCAPE_NS}}}label": f"{n} {color} {','.join(keys)}",
+            f"{{{INKSCAPE_NS}}}label": f"{n} {color} {','.join(key for key, _ in groups)}",
             "fill": "none",
             "stroke": color,
             "stroke-width": _fmt(settings.pen_width),
             "stroke-linecap": "round",
             "stroke-linejoin": "round",
         })
-        for poly in order_polylines([p for p in polylines if len(p) >= 2]):
-            points = " ".join(f"{_fmt(x)},{_fmt(y)}" for x, y in poly)
-            first, rest = points.split(" ", 1)
-            ET.SubElement(group, f"{{{SVG_NS}}}path", {"d": f"M{first} L{rest}"})
+        for key, polylines in groups:
+            group = ET.SubElement(layer, f"{{{SVG_NS}}}g", {f"{{{INKSCAPE_NS}}}label": key, "data-key": key})
+            for poly in order_polylines([p for p in polylines if len(p) >= 2]):
+                points = " ".join(f"{_fmt(x)},{_fmt(y)}" for x, y in poly)
+                first, rest = points.split(" ", 1)
+                ET.SubElement(group, f"{{{SVG_NS}}}path", {"d": f"M{first} L{rest}"})
     tree = ET.ElementTree(root)
     ET.indent(tree)
     tree.write(output_file, encoding="utf-8", xml_declaration=True)

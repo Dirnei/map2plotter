@@ -31,6 +31,8 @@ COPY osm_cache.py .
 COPY overpass_servers.py .
 COPY plotter_svg.py .
 COPY poster_edits.py .
+COPY poster_colors.py .
+COPY poster_size.py .
 COPY web_app.py .
 COPY web/ web/
 COPY themes/ themes/

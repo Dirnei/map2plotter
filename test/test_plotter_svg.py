@@ -235,6 +235,28 @@ def test_write_svg_structure(tmp_path):
         assert g.get("stroke-width") == "0.5"
         assert g.get("fill") == "none"
 
+    # Element groups inside the shared layer, each with only its own paths
+    groups = layers[0].findall(f"{SVG}g")
+    assert [g.get("data-key") for g in groups] == ["road_tertiary", "road_default"]
+    assert [g.get(f"{INK}label") for g in groups] == ["road_tertiary", "road_default"]
+    assert all(g.get("stroke") is None for g in groups)
+    assert [len(g.findall(f"{SVG}path")) for g in groups] == [1, 1]
+    # Every path sits in exactly one element group, directly
+    assert all(layer.find(f"{SVG}path") is None for layer in layers)
+    assert sum(len(g.findall(f"{SVG}path")) for layer in layers for g in layer.findall(f"{SVG}g")) == 3
+
+
+def test_render_every_path_in_an_element_group(tmp_path):
+    roads, water, parks, xlim, ylim = _synthetic_inputs()
+    out = tmp_path / "poster.svg"
+    ps.render(out, roads, water, parks, xlim, ylim, THEME, TEXTS, ps.PlotterSettings(300, 400, 0.3, 0.3))
+    root = _parse(out)
+    total = len(list(root.iter(f"{SVG}path")))
+    grouped = sum(len(g.findall(f"{SVG}path")) for g in root.iter(f"{SVG}g") if g.get("data-key"))
+    assert total == grouped > 0
+    keys = {g.get("data-key") for g in root.iter(f"{SVG}g") if g.get("data-key")}
+    assert {"water", "parks", "text", "road_motorway"} <= keys
+
 
 def test_fractional_mm_size_formatting(tmp_path):
     settings = ps.PlotterSettings(304.8, 406.4, 0.3, 0.3)

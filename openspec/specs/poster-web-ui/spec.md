@@ -57,7 +57,7 @@ The server SHALL validate a submitted configuration before running anything, and
 - city and country are required
 - latitude and longitude must be set together, and must be parseable by the CLI's coordinate parser
 - numeric values must be greater than 0
-- in the print workflow, width and height must not exceed 500 mm. The pen plotter workflow has no upper limit.
+- a PNG export must fit the CLI's PNG pixel limits at the chosen dpi and the loaded size. SVG, PDF and plotter output have no size limit.
 - the theme must exist
 - the format must be `png`, `svg` or `pdf` in the print workflow. The pen plotter workflow always uses `plotter`.
 - for `plotter`, the hatch spacing, water spacing and parks spacing must each not be less than the pen width
@@ -85,6 +85,10 @@ Customize previews and exports SHALL be rejected when no location has been loade
 #### Scenario: Preview before load
 - **WHEN** a preview is requested before any location was loaded
 - **THEN** the server rejects it with an error saying the map must be loaded first
+
+#### Scenario: Oversized PNG export
+- **WHEN** a 1000 × 1500 mm print poster is loaded and a PNG export at 300 dpi is requested
+- **THEN** the server responds with a validation error on the dpi field naming the highest dpi that fits, and no process is started
 
 ### Requirement: Invoke the existing CLI
 Every load, preview and export SHALL run `create_map_poster.py` as a separate process, using the same Python interpreter. The server SHALL pass the configuration as a command-line argument list, never through a shell. Options left empty SHALL be omitted, so the CLI defaults apply.
@@ -218,22 +222,26 @@ The page SHALL guide the user through two steps: **Location** and **Customize**.
 
 ### Requirement: Choose the workflow
 The Location step SHALL start with a choice between two workflows:
-- **Print poster**: output as PNG, SVG or PDF, with a size limit of 500 mm per side
-- **Pen plotter**: stroke-only plotter SVG, with no size limit
+- **Print poster**: output as PNG, SVG or PDF
+- **Pen plotter**: stroke-only plotter SVG
 
-The default is Print poster. The chosen workflow SHALL be part of the loaded location. The Customize step SHALL show the workflow, the place and the poster size in a header, and SHALL show only the options of that workflow:
-- **Print**: file format (`png`, `svg`, `pdf`) and font family
-- **Plotter**: pen width, hatch spacing, fill modes, per-area spacing and water outline. The theme picker SHALL be labelled as pen colours, since each colour becomes a layer. The font family SHALL be hidden, because plotter text always uses the single-line pen font.
+Neither workflow SHALL limit the poster size in the Location step. The default is Print poster. The chosen workflow SHALL be part of the loaded location. The Customize step SHALL show the workflow, the place and the poster size in a header, and SHALL show only the options of that workflow:
+- **Print**: the theme grid, file format (`png`, `svg`, `pdf`), PNG resolution and font family
+- **Plotter**: the pens list (see "Pens in the plotter workflow") instead of the theme grid, plus pen width, hatch spacing, fill modes, per-area spacing and water outline. The font family SHALL be hidden, because plotter text always uses the single-line pen font.
 
 Switching the workflow SHALL require going back to Location and loading again.
 
 #### Scenario: Plotter workflow
 - **WHEN** the user picks "Pen plotter", enters 600 × 900 mm and loads the map
-- **THEN** the load succeeds, the preview is the plotter SVG, and Customize shows the pen options and pen colours, without a file format or font family choice
+- **THEN** the load succeeds, the preview is the plotter SVG, and Customize shows the pens list and pen options, without a theme grid, file format or font family choice
 
 #### Scenario: Print size limited in Location
-- **WHEN** the user picks "Print poster" and enters a width of 600 mm
-- **THEN** "Load map" is rejected with an error on the width field that suggests the pen plotter workflow for larger sizes
+- **WHEN** the user picks "Print poster" and enters a width of 0
+- **THEN** "Load map" is rejected with an error on the width field; any positive size is accepted
+
+#### Scenario: Large print poster
+- **WHEN** the user picks "Print poster", enters 841 × 1189 mm and loads the map
+- **THEN** the load succeeds and Customize opens with a preview
 
 ### Requirement: Zoom and pan the preview
 The preview SHALL support zooming from fit-to-view up to at least 800 %. It SHALL offer:
@@ -301,3 +309,58 @@ Preview images SHALL be written outside `posters/`, to a working directory of th
 #### Scenario: Previews not in history
 - **WHEN** the user changes the theme five times and then exports once
 - **THEN** the history shows exactly one new poster
+
+### Requirement: Pens in the plotter workflow
+In the pen plotter workflow, the Customize step SHALL show a pens list with one row per plottable element:
+- water, parks
+- motorways, primary, secondary, tertiary and residential roads, other roads
+- text
+
+Each row SHALL have a colour picker. Each map layer row SHALL also have a show/hide toggle, which controls the hidden layers of the edit list. The list SHALL show how many distinct pens (colours of visible elements) the poster needs.
+
+Two presets SHALL be offered:
+- **Start from theme**: sets every element's colour from a chosen theme
+- **Single pen**: sets every element to black
+
+The initial colours SHALL come from the theme selected when the map was loaded.
+
+The plotter preview SHALL be shown on white paper, without a theme background. A colour change SHALL update the preview immediately in the browser, without starting a render. Exports SHALL pass the pen colours to the CLI with `--color` for every colour that differs from the base theme, so the exported file and the displayed command match the preview.
+
+#### Scenario: Recolour water instantly
+- **WHEN** the user picks blue for water in the pens list
+- **THEN** the water paths in the preview turn blue at once and no new preview job is started
+
+#### Scenario: Shared pen count
+- **WHEN** tertiary roads and other roads are set to the same colour and everything else differs
+- **THEN** the pens list shows one pen fewer than the number of visible elements
+
+#### Scenario: Single pen preset
+- **WHEN** the user chooses "Single pen"
+- **THEN** every row is black, the pen count shows 1, and the exported SVG has one layer
+
+#### Scenario: Export uses the pen colours
+- **WHEN** the base theme is terracotta, the user sets water to `#1f5fa8` and exports
+- **THEN** the executed command contains `--color water=#1f5fa8`, and the exported SVG's water layer has that stroke
+
+#### Scenario: Hide a layer from the pens list
+- **WHEN** the user turns off parks in the pens list
+- **THEN** the preview re-renders without parks, and the parks row stays in the list, switched off
+
+#### Scenario: Print keeps themes
+- **WHEN** the loaded workflow is Print poster
+- **THEN** Customize shows the theme grid and no pens list
+
+### Requirement: PNG resolution in the print workflow
+In the print workflow, Customize SHALL offer a PNG resolution field in dpi (default 300), shown when the format is PNG and passed to the export as `--dpi`. The page SHALL show the resulting pixel size next to the field:
+- above 100 megapixels, a warning that the file will be large and the export slow
+- over the PNG pixel limit, an error with the highest dpi that fits and a "Use N dpi" action that sets it
+
+Export SHALL be blocked while the PNG is over the limit. Previews SHALL NOT depend on this setting.
+
+#### Scenario: Suggest a lower dpi
+- **WHEN** a 1000 × 1500 mm print poster is loaded and the format is PNG at 300 dpi
+- **THEN** the field shows the pixel size, an error, and "Use 293 dpi". Pressing it sets 293, and the export succeeds.
+
+#### Scenario: Vector format avoids the limit
+- **WHEN** the same poster is set to SVG
+- **THEN** the dpi field is hidden, and export is possible without any limit message

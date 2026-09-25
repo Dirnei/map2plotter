@@ -8,14 +8,14 @@ The Location step SHALL start with a choice between two workflows:
 - **Pen plotter**: stroke-only plotter SVG
 
 Neither workflow SHALL limit the poster size in the Location step. The default is Print poster. The chosen workflow SHALL be part of the loaded location. The Customize step SHALL show the workflow, the place and the poster size in a header, and SHALL show only the options of that workflow:
-- **Print**: file format (`png`, `svg`, `pdf`), PNG resolution and font family
-- **Plotter**: pen width, hatch spacing, fill modes, per-area spacing and water outline. The theme picker SHALL be labelled as pen colours, since each colour becomes a layer. The font family SHALL be hidden, because plotter text always uses the single-line pen font.
+- **Print**: the theme grid, file format (`png`, `svg`, `pdf`), PNG resolution and font family
+- **Plotter**: the pens list (see "Pens in the plotter workflow") instead of the theme grid, plus pen width, hatch spacing, fill modes, per-area spacing and water outline. The font family SHALL be hidden, because plotter text always uses the single-line pen font.
 
 Switching the workflow SHALL require going back to Location and loading again.
 
 #### Scenario: Plotter workflow
 - **WHEN** the user picks "Pen plotter", enters 600 × 900 mm and loads the map
-- **THEN** the load succeeds, the preview is the plotter SVG, and Customize shows the pen options and pen colours, without a file format or font family choice
+- **THEN** the load succeeds, the preview is the plotter SVG, and Customize shows the pens list and pen options, without a theme grid, file format or font family choice
 
 #### Scenario: Print size limited in Location
 - **WHEN** the user picks "Print poster" and enters a width of 0

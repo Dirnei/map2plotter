@@ -229,3 +229,90 @@ def test_cache_only_main_exits_nonzero(offline, monkeypatch):
     monkeypatch.setattr(cmp, "THEMES_DIR", "themes")
     code = exit_code(cmp.main, ["-c", "Lisbon", "-C", "Portugal", "--cache-only", "-o", str(offline / "x.png")])
     assert code == 1
+
+
+# --- Colour overrides -------------------------------------------------------------
+
+
+@pytest.mark.parametrize("value, fragment", [
+    ("buildings=#000000", "buildings"),
+    ("water=blue", "blue"),
+    ("water", "KEY=#RRGGBB"),
+    ("water=#12345", "#12345"),
+])
+def test_invalid_color_rejected_before_download(cli, capsys, value, fragment):
+    assert exit_code(cli, "--color", value) == 1
+    assert fragment in capsys.readouterr().out
+    assert cli.calls == []
+
+
+def test_color_last_value_wins():
+    assert cmp.parse_color_overrides(["water=#111111", "water=#ABCDEF"]) == {"water": "#abcdef"}
+
+
+def test_color_override_in_plotter_svg(cli, monkeypatch):
+    import geopandas as gpd
+    from shapely.geometry import box
+
+    water = gpd.GeoDataFrame({"geometry": [box(LON - 0.005, LAT - 0.005, LON + 0.005, LAT + 0.005)]}, crs="EPSG:4326")
+    monkeypatch.setattr(cmp, "fetch_features", lambda point, dist, tags, name: water if name == "water" else None)
+    out = cli.tmp / "p.svg"
+    cli("-f", "plotter", "--color", "water=#1F5FA8", "--output", str(out))
+    import xml.etree.ElementTree as ET
+    ns = "{http://www.w3.org/2000/svg}"
+    layers = {
+        g.get("stroke"): [k.get("data-key") for k in g.findall(f"{ns}g")]
+        for g in ET.parse(out).getroot().findall(f"{ns}g")
+    }
+    assert "water" in layers["#1f5fa8"]
+    assert "text" in layers[THEME["text"].lower()]  # others keep the theme colour
+
+
+def test_color_override_in_png(cli):
+    base = render_png(cli, "base.png")
+    cli("-f", "png", "-W", "254", "-H", "254", "--dpi", "50", "--color", "text=#0000FF",
+        "--output", str(cli.tmp / "blue.png"))
+    img = np.asarray(Image.open(cli.tmp / "blue.png").convert("RGB")).astype(int)
+    city = (slice(405, 430), slice(50, 450))
+    assert len(red_rows(base[city], 0, 25))
+    assert not len(red_rows(img[city], 0, 25))
+    band = img[city]
+    assert ((band[:, :, 2] - band[:, :, 0] > 100)).any()  # blue text now
+
+
+# --- Size limits --------------------------------------------------------------------
+
+import poster_size  # noqa: E402
+
+
+def test_oversized_png_rejected_with_suggested_dpi(cli, capsys):
+    assert exit_code(cli, "-f", "png", "-W", "1000", "-H", "1500") == 1
+    out = capsys.readouterr().out
+    assert "11811 × 17717 px" in out and "at most 293 dpi" in out
+    assert cli.calls == []
+
+
+def test_png_limits():
+    assert poster_size.png_pixels(841, 1189, 300) == (9933, 14043)
+    assert poster_size.png_fits(841, 1189, 300)  # A0
+    assert not poster_size.png_fits(1000, 1500, 300)
+    assert poster_size.max_png_dpi(1000, 1500) == 293
+    assert poster_size.png_fits(1000, 1500, 293) and not poster_size.png_fits(1000, 1500, 294)
+    # Side limit: a very long, thin poster
+    assert poster_size.png_pixels(6000, 10, 300)[0] > poster_size.MAX_PNG_SIDE
+    assert not poster_size.png_fits(6000, 10, 300)
+    assert poster_size.png_fits(6000, 10, poster_size.max_png_dpi(6000, 10))
+
+
+def test_large_svg_and_pdf_not_clamped(cli):
+    import re
+    import xml.etree.ElementTree as ET
+
+    svg = cli.tmp / "big.svg"
+    cli("-f", "svg", "-W", "600", "-H", "900", "--output", str(svg))
+    root = ET.parse(svg).getroot()
+    assert root.get("width").startswith("1700") and root.get("height").startswith("2551")  # pt = mm / 25.4 * 72
+    pdf = cli.tmp / "big.pdf"
+    cli("-f", "pdf", "-W", "600", "-H", "900", "--output", str(pdf))
+    box = re.search(rb"/MediaBox \[ *0 0 ([\d.]+) ([\d.]+) *\]", pdf.read_bytes())
+    assert box and abs(float(box.group(1)) - 600 / 25.4 * 72) < 1 and abs(float(box.group(2)) - 900 / 25.4 * 72) < 1

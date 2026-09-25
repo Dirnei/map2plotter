@@ -80,12 +80,7 @@ export class Editor {
       next.text[key] = entry;
       this.commit(next);
     });
-    this.layerInputs = this.buildToggles(layerToggles, LAYERS, (key, visible) => {
-      const next = this.snapshot();
-      next.hidden_layers = next.hidden_layers.filter((k) => k !== key);
-      if (!visible) next.hidden_layers.push(key);
-      this.commit(next);
-    });
+    this.layerInputs = this.buildToggles(layerToggles, LAYERS, (key, visible) => this.setLayerVisible(key, visible));
 
     overlay.addEventListener("pointerdown", (e) => this.pointerDown(e));
     overlay.addEventListener("pointermove", (e) => this.pointerMove(e));
@@ -175,6 +170,17 @@ export class Editor {
     if (this.selected !== null && this.selected >= this.edits.erase.length) this.selected = null;
     this.render();
     this.onChange(this.edits);
+  }
+
+  setLayerVisible(key, visible) {
+    const next = this.snapshot();
+    next.hidden_layers = next.hidden_layers.filter((k) => k !== key);
+    if (!visible) next.hidden_layers.push(key);
+    this.commit(next);
+  }
+
+  layerHidden(key) {
+    return this.edits.hidden_layers.includes(key);
   }
 
   setTool(tool) {

@@ -28,6 +28,8 @@ import osm_cache
 import overpass_servers
 import plotter_svg
 import poster_edits
+import poster_size
+from poster_colors import THEME_COLOR_KEYS, parse_color_overrides
 from matplotlib.font_manager import FontProperties
 from matplotlib.patches import PathPatch
 from matplotlib.path import Path as MplPath
@@ -54,7 +56,6 @@ FONTS = load_fonts()
 # Poster size in mm
 DEFAULT_WIDTH_MM = 300
 DEFAULT_HEIGHT_MM = 400
-MAX_SIZE_MM = 500  # Limit for png/svg/pdf output; plotter output is not limited
 
 # Base font sizes in points (at the reference size plotter_svg.REFERENCE_SIZE_MM)
 BASE_MAIN = 60
@@ -926,7 +927,7 @@ Options:
   --all-themes      Generate posters for all themes
   --distance, -d    Map radius in meters (default: 18000)
   --list-themes     List all available themes
-  --width, -W       Poster width in mm (default: 300)
+  --width, -W       Poster width in mm (default: 300; PNG is limited to 200 MP)
   --height, -H      Poster height in mm (default: 400)
   --format, -f      Output format: png, svg, pdf or plotter (default: png)
   --overpass-url    OpenStreetMap server URL or 'auto' (default: $OVERPASS_URL or auto)
@@ -941,6 +942,7 @@ Options:
   --output, -o      Write the poster to this file
   --dpi             PNG resolution (default: 300)
   --edits           JSON edit list (erase regions, text offsets, hidden layers)
+  --color           Override a theme colour, e.g. --color water=#1f5fa8 (repeatable)
 
 Distance guide:
   4000-6000m   Small/dense cities (Venice, Amsterdam old center)
@@ -1042,14 +1044,14 @@ Examples:
         "-W",
         type=float,
         default=DEFAULT_WIDTH_MM,
-        help=f"Poster width in mm (default: {DEFAULT_WIDTH_MM}, max: {MAX_SIZE_MM} except for plotter)",
+        help=f"Poster width in mm (default: {DEFAULT_WIDTH_MM}; any size, PNG is limited by pixels)",
     )
     parser.add_argument(
         "--height",
         "-H",
         type=float,
         default=DEFAULT_HEIGHT_MM,
-        help=f"Poster height in mm (default: {DEFAULT_HEIGHT_MM}, max: {MAX_SIZE_MM} except for plotter)",
+        help=f"Poster height in mm (default: {DEFAULT_HEIGHT_MM}; any size, PNG is limited by pixels)",
     )
     parser.add_argument(
         "--list-themes", action="store_true", help="List all available themes"
@@ -1140,6 +1142,13 @@ Examples:
         help="Resolution of PNG output (default: 300)",
     )
     parser.add_argument(
+        "--color",
+        action="append",
+        metavar="KEY=#RRGGBB",
+        help="Override one theme colour, e.g. --color water=#1f5fa8 (repeatable; keys: "
+             + ", ".join(THEME_COLOR_KEYS) + ")",
+    )
+    parser.add_argument(
         "--edits",
         help="JSON edit list (erase regions, text offsets, hidden layers) to apply",
     )
@@ -1183,13 +1192,12 @@ def main(argv=None):
             print(f"Error: --{name.replace('_', '-')} must be greater than 0.")
             sys.exit(1)
 
-    # Enforce maximum dimensions for matplotlib output
-    if args.format != "plotter":
-        for name in ("width", "height"):
-            if getattr(args, name) > MAX_SIZE_MM:
-                print(f"⚠ --{name.replace('_', '-')} {getattr(args, name):g} exceeds the maximum of "
-                      f"{MAX_SIZE_MM} mm. It's enforced as {MAX_SIZE_MM} mm.")
-                setattr(args, name, float(MAX_SIZE_MM))
+    # Only PNG has a size limit (pixels); the size itself is never changed
+    if args.format == "png":
+        error = poster_size.png_limit_error(args.width, args.height, args.dpi)
+        if error:
+            print(f"Error: {error}.")
+            sys.exit(1)
 
     plotter_settings = None
     hatch_spacing = args.hatch_spacing if args.hatch_spacing is not None else args.pen_width
@@ -1232,6 +1240,12 @@ def main(argv=None):
         if os.path.splitext(args.output)[1].lower() != expected:
             print(f"Error: --output must end in '{expected}' for --format {args.format}.")
             sys.exit(1)
+
+    try:
+        color_overrides = parse_color_overrides(args.color)
+    except ValueError as e:
+        print(f"Error: --color: {e}")
+        sys.exit(1)
 
     edits = None
     if args.edits:
@@ -1277,7 +1291,7 @@ def main(argv=None):
             coords = get_coordinates(args.city, args.country)
 
         for theme_name in themes_to_generate:
-            THEME = load_theme(theme_name)
+            THEME = {**load_theme(theme_name), **color_overrides}
             if args.output:
                 output_file = args.output
                 os.makedirs(os.path.dirname(os.path.abspath(output_file)), exist_ok=True)

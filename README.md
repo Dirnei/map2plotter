@@ -125,8 +125,10 @@ python web_app.py --port 9000  # use another port
 
 The page works in two steps:
 
-1. **Location**: first choose what you are making: a **Print poster** (PNG, SVG or PDF, up to 500 mm per side) or a **Pen plotter** SVG (any size). Then enter the city, country (or exact coordinates), distance, poster size and OpenStreetMap server (automatic fallback, or a fixed server; **Check servers** shows which ones are up). **Load map** downloads the data once, streaming the generator's output, and shows a quick preview.
-2. **Customize**: only the options of your workflow. For print posters that is theme, labels, font and file format. For the pen plotter it is pen colours (one SVG layer each), labels, pen width, fill mode, line spacing and water outline. Every change re-renders the preview from the loaded data with `--cache-only`, so nothing is downloaded again. **Export poster** writes the full-resolution poster to `posters/`, optionally one per theme.
+1. **Location**: first choose what you are making: a **Print poster** (PNG, SVG or PDF) or a **Pen plotter** SVG. Any poster size works. Then enter the city, country (or exact coordinates), distance, poster size and OpenStreetMap server (automatic fallback, or a fixed server; **Check servers** shows which ones are up). **Load map** downloads the data once, streaming the generator's output, and shows a quick preview.
+2. **Customize**: only the options of your workflow. For print posters that is theme, labels, font and file format. For the pen plotter it is the **Pens** list, labels, pen width, fill mode, line spacing and water outline. Every change re-renders the preview from the loaded data with `--cache-only`, so nothing is downloaded again.
+
+   **Pens:** each element (water, parks, each road class, text) gets a colour picker. The map layers also get a *Draw* toggle. Elements with the same colour share one pen and one Inkscape layer; the list shows how many pens you need. Start from any theme's colours or use *Single pen*. Colour changes apply to the preview instantly, without re-rendering, and the export passes them as `--color` options. Plotter previews are shown on white paper. **Export poster** writes the full-resolution poster to `posters/`, optionally one per theme.
 
 Zoom into the preview with **+ / − / Fit** (or the `+`, `-` and `0` keys) and Ctrl + mouse wheel. Move around with the **Pan** tool or the middle mouse button. Plotter previews are vector and stay sharp at any zoom.
 
@@ -163,14 +165,15 @@ With Docker, run `docker compose up -d` or start the container without arguments
 | **OPTIONAL:** `--distance` | `-d` | Map radius in meters | 18000 |
 | **OPTIONAL:** `--list-themes` | | List all available themes | |
 | **OPTIONAL:** `--all-themes` | | Generate posters for all available themes | |
-| **OPTIONAL:** `--width` | `-W` | Poster width in mm | 300 (max: 500, no limit for plotter) |
-| **OPTIONAL:** `--height` | `-H` | Poster height in mm | 400 (max: 500, no limit for plotter) |
+| **OPTIONAL:** `--width` | `-W` | Poster width in mm (any size; PNG is limited by pixels, see below) | 300 |
+| **OPTIONAL:** `--height` | `-H` | Poster height in mm | 400 |
 | **OPTIONAL:** `--format` | `-f` | Output format: `png`, `svg`, `pdf` or `plotter` | png |
 | **OPTIONAL:** `--overpass-url` | | OpenStreetMap (Overpass API) server URL, or `auto` | `$OVERPASS_URL` or `auto` |
 | **OPTIONAL:** `--cache-only` | | Never download map data or geocode; fail if the area is not cached | |
 | **OPTIONAL:** `--output` | `-o` | Write the poster to this file instead of `posters/<city>_<theme>_<timestamp>` (extension must match the format; not with `--all-themes`) | |
 | **OPTIONAL:** `--dpi` | | Resolution of PNG output | 300 |
 | **OPTIONAL:** `--edits` | | JSON edit list to apply (see [Edit lists](#edit-lists)) | |
+| **OPTIONAL:** `--color` | | Override one theme colour, e.g. `--color water=#1f5fa8` (repeatable). Keys: `bg`, `text`, `gradient_color`, `water`, `parks`, `road_motorway`, `road_primary`, `road_secondary`, `road_tertiary`, `road_residential`, `road_default` | |
 
 ### OpenStreetMap Servers
 
@@ -201,7 +204,7 @@ How the poster is turned into pen paths:
 - **Roads** keep the road hierarchy. A road wider than the pen is filled with parallel strokes. Narrower roads get a single centerline. Where roads overlap, the more important road is the only one drawn.
 - **Water and parks** are hatch-filled at different angles, or filled with concentric contours. Roads are left out of the fill. Water can get an outline.
 - **Text** is drawn with a single-stroke (Hershey) font, and the map is cleared behind it. Accented letters are drawn without their accents. Scripts the font cannot draw (e.g. CJK) are skipped with a warning, so use a Latin `--display-city` for those.
-- **Pens:** each theme colour gets its own Inkscape layer, so you can swap pens between layers. The background colour is not drawn; use coloured paper instead.
+- **Pens:** each colour gets its own Inkscape layer, so you can swap pens between layers. Inside a layer, each element type (water, parks, each road class, text) has its own labelled group. Set single colours with `--color`, e.g. `--color water=#1f5fa8`. The background colour is not drawn; use coloured paper instead.
 
 ```bash
 # A3 portrait poster for a 0.3 mm fineliner
@@ -266,7 +269,7 @@ python create_map_poster.py -c "Dubai" -C "UAE" -dc "دبي" -dC "الإمارا
 
 ### Resolution Guide (300 DPI)
 
-PNG output is rendered at 300 DPI. Use these values for `--width` and `--height` to target specific resolutions:
+PNG output is rendered at 300 DPI by default (`--dpi` changes it). Use these values for `--width` and `--height` to target specific resolutions:
 
 | Target | Resolution (px) | Size in mm (`--width` / `--height`) |
 |--------|-----------------|------------------|
@@ -275,6 +278,9 @@ PNG output is rendered at 300 DPI. Use these values for `--width` and `--height`
 | **HD Wallpaper** | 1920 x 1080 | 162.6 x 91.4 |
 | **4K Wallpaper** | 3840 x 2160 | 325.1 x 182.9 |
 | **A4 Print** | 2480 x 3508 | 210 x 297 |
+| **A0 Print** | 9933 x 14043 | 841 x 1189 |
+
+**Size limits:** SVG, PDF and plotter output have no size limit. A PNG may have at most 200 megapixels and 65,535 px per side. Larger requests fail before downloading, and the error names the highest dpi that fits. For example, 1000 × 1500 mm fits at up to 293 dpi. The poster size is never changed silently.
 
 ### Examples
 

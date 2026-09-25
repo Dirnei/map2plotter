@@ -40,6 +40,7 @@ test_cache/
 
 # Old posters (keep structure but not old files)
 posters/old/
+posters/
 
 # Documentation (not needed in container)
 *.md

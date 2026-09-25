@@ -32,7 +32,9 @@ from lat_lon_parser import parse
 from pydantic import BaseModel, ValidationError, field_validator
 
 import overpass_servers
+import poster_colors
 import poster_edits
+import poster_size
 
 ROOT = Path(__file__).resolve().parent
 POSTERS_DIR = ROOT / "posters"
@@ -42,7 +44,7 @@ CLI_SCRIPT = ROOT / "create_map_poster.py"
 WORK_DIR = ROOT / os.environ.get("CACHE_DIR", "cache") / "web"
 
 POSTER_TYPES = {".png": "image/png", ".svg": "image/svg+xml", ".pdf": "application/pdf"}
-MAX_SIZE_MM = 500  # Same limit as the CLI for png/svg/pdf; plotter output is not limited
+PREVIEW_MAX_MM = 500  # Raster previews of larger posters are rendered scaled down (same look)
 PREVIEW_PIXELS = 2000  # Long side of PNG previews (sharp enough to zoom in a little)
 PING_INTERVAL = 15  # seconds between SSE keep-alive comments
 KILL_TIMEOUT = 5  # seconds to wait after terminate before killing
@@ -94,6 +96,7 @@ class CustomizeConfig(BaseModel):
     display_country: Optional[str] = None
     font_family: Optional[str] = None
     format: Literal["png", "svg", "pdf", "plotter"] = "png"
+    dpi: int = 300  # PNG export resolution
     pen_width: float = 0.3
     hatch_spacing: Optional[float] = None
     water_fill: Literal["hatch", "concentric"] = "hatch"
@@ -101,6 +104,7 @@ class CustomizeConfig(BaseModel):
     water_spacing: Optional[float] = None
     parks_spacing: Optional[float] = None
     water_outline: bool = False
+    colors: Optional[dict] = None  # {theme key: '#rrggbb'} overrides (pen colours)
     edits: Optional[dict] = None
 
     @field_validator("country_label", "display_city", "display_country", "font_family", mode="before")
@@ -184,12 +188,6 @@ def validate_location(data):
     for name in ("distance", "width", "height"):
         if getattr(config, name) <= 0:
             errors[name] = "Must be greater than 0"
-    if config.mode == "print":
-        for name in ("width", "height"):
-            if getattr(config, name) > MAX_SIZE_MM:
-                errors.setdefault(
-                    name, f"Print posters are limited to {MAX_SIZE_MM} mm per side; use the pen plotter workflow"
-                )
 
     try:
         config.overpass_url = overpass_servers.normalize(config.overpass_url)
@@ -199,9 +197,10 @@ def validate_location(data):
     return (None if errors else config), errors
 
 
-def validate_customize(data, location=None):
+def validate_customize(data, location=None, export=False):
     """
     Validate the Customize step for the loaded location's workflow, if given.
+    The PNG pixel limit only applies to exports (previews are rendered scaled down).
 
     Returns:
         (CustomizeConfig or None, {field: error message})
@@ -216,7 +215,7 @@ def validate_customize(data, location=None):
         elif config.format == "plotter":
             errors["format"] = "Pen plotter output needs the pen plotter workflow (choose it in the Location step)"
 
-    for name in ("pen_width", "hatch_spacing", "water_spacing", "parks_spacing"):
+    for name in ("pen_width", "hatch_spacing", "water_spacing", "parks_spacing", "dpi"):
         value = getattr(config, name)
         if value is not None and value <= 0:
             errors[name] = "Must be greater than 0"
@@ -233,6 +232,17 @@ def validate_customize(data, location=None):
                 value = config.pen_width
             if value is not None and value < config.pen_width and name not in errors:
                 errors[name] = f"{label} must not be less than the pen width"
+
+    if export and location is not None and config.format == "png" and "dpi" not in errors:
+        error = poster_size.png_limit_error(location.width, location.height, config.dpi)
+        if error:
+            errors["dpi"] = error[0].upper() + error[1:]
+
+    if config.colors:
+        try:
+            config.colors = {key: poster_colors.check_color(key, value) for key, value in config.colors.items()}
+        except ValueError as e:
+            errors["colors"] = str(e)
 
     if config.edits is not None:
         try:
@@ -264,11 +274,32 @@ def location_args(loc, width=None, height=None):
     return args
 
 
-def customize_args(c, fmt=None, all_themes=None):
-    """CLI arguments for the look of the poster (empty options omitted)."""
+def theme_colors(theme_id):
+    """Colour values of a theme file ({} if it cannot be read)."""
+    try:
+        data = json.loads((THEMES_DIR / f"{theme_id}.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return {k: v.lower() for k, v in data.items() if isinstance(v, str) and v.startswith("#")}
+
+
+def color_args(c, all_themes=False):
+    """--color options for the colours that differ from the base theme (all of them with all themes)."""
+    if not c.colors:
+        return []
+    base = {} if all_themes else theme_colors(c.theme)
+    return [
+        arg for key, value in c.colors.items() if base.get(key) != value
+        for arg in ("--color", f"{key}={value}")
+    ]
+
+
+def customize_args(c, fmt=None, all_themes=None, export=False):
+    """CLI arguments for the look of the poster (empty options omitted; --dpi only for PNG exports)."""
     fmt = fmt or c.format
     all_themes = c.all_themes if all_themes is None else all_themes
     args = ["--all-themes"] if all_themes else _opt("--theme", c.theme)
+    args += color_args(c, all_themes)
     for flag, value in (
         ("--country-label", c.country_label),
         ("--display-city", c.display_city),
@@ -278,6 +309,8 @@ def customize_args(c, fmt=None, all_themes=None):
         if value:
             args += _opt(flag, value)
     args += ["--format", fmt]
+    if export and fmt == "png" and c.dpi != 300:
+        args += ["--dpi", str(c.dpi)]
     if fmt == "plotter":
         args += ["--pen-width", _num(c.pen_width)]
         for flag, value in (
@@ -303,7 +336,7 @@ def preview_dpi(width, height):
 
 def preview_size(loc):
     """Preview page size: the poster size, scaled down (same aspect) to the raster limit if needed."""
-    scale = min(1.0, MAX_SIZE_MM / max(loc.width, loc.height))
+    scale = min(1.0, PREVIEW_MAX_MM / max(loc.width, loc.height))
     return loc.width * scale, loc.height * scale
 
 
@@ -660,10 +693,10 @@ async def export(request: Request):
     """Render the final poster(s) into posters/ from the cached map data."""
     data = await _json_body(request)
     loc = _require_loaded()
-    custom, errors = validate_customize(data, loc)
+    custom, errors = validate_customize(data, loc, export=True)
     if errors:
         return _invalid(errors)
-    args = location_args(loc) + customize_args(custom) + ["--cache-only"]
+    args = location_args(loc) + customize_args(custom, export=True) + ["--cache-only"]
     args += _write_edits(custom, "edits-export.json")
     job = await start_job("export", args)
     return job.summary()
