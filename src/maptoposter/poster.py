@@ -23,33 +23,31 @@ import osmnx as ox
 from geopandas import GeoDataFrame
 from geopy.geocoders import Nominatim
 from lat_lon_parser import parse
-from font_management import load_fonts
-import osm_cache
-import overpass_servers
-import plotter_svg
-import poster_edits
-import poster_size
-from poster_colors import THEME_COLOR_KEYS, parse_color_overrides
 from matplotlib.font_manager import FontProperties
 from matplotlib.patches import PathPatch
 from matplotlib.path import Path as MplPath
 from networkx import MultiDiGraph
-from osm_cache import CacheError, NotCachedError, cache_get, cache_set
 from osmnx._errors import InsufficientResponseError
 from shapely.geometry import Point
 from shapely.geometry.polygon import orient
 from tqdm import tqdm
 
+from . import edits as poster_edits
+from . import osm_cache, overpass, paths, plotter
+from . import size as poster_size
+from .colors import THEME_COLOR_KEYS, parse_color_overrides
+from .fonts import load_fonts
+from .osm_cache import CacheError, NotCachedError, cache_get, cache_set
+
 
 # OpenStreetMap server: 'auto' (health check + fallback) or an Overpass API base URL
-OVERPASS_CHOICE = overpass_servers.AUTO
+OVERPASS_CHOICE = overpass.AUTO
 _overpass_order = None  # Servers to try, resolved on the first download
 # --cache-only: never download map data or geocode; fail if it is not cached
 CACHE_ONLY = False
 
-THEMES_DIR = "themes"
-FONTS_DIR = "fonts"
-POSTERS_DIR = "posters"
+THEMES_DIR = paths.THEMES_DIR
+POSTERS_DIR = paths.POSTERS_DIR
 
 FONTS = load_fonts()
 
@@ -57,7 +55,7 @@ FONTS = load_fonts()
 DEFAULT_WIDTH_MM = 300
 DEFAULT_HEIGHT_MM = 400
 
-# Base font sizes in points (at the reference size plotter_svg.REFERENCE_SIZE_MM)
+# Base font sizes in points (at the reference size plotter.REFERENCE_SIZE_MM)
 BASE_MAIN = 60
 BASE_SUB = 22
 BASE_COORDS = 14
@@ -375,9 +373,9 @@ def overpass_download(call):
     """
     global _overpass_order
     if _overpass_order is None:
-        overpass_servers.limit_retries(log=tqdm.write)
-        _overpass_order = overpass_servers.candidates(OVERPASS_CHOICE, log=tqdm.write)
-    result, url = overpass_servers.run(call, _overpass_order, log=tqdm.write)
+        overpass.limit_retries(log=tqdm.write)
+        _overpass_order = overpass.candidates(OVERPASS_CHOICE, log=tqdm.write)
+    result, url = overpass.run(call, _overpass_order, log=tqdm.write)
     # Keep using the server that answered for the remaining downloads
     _overpass_order = [url] + [u for u in _overpass_order if u != url]
     return result
@@ -422,7 +420,7 @@ def fetch_graph(point, dist) -> MultiDiGraph:
         raise RuntimeError(
             "Map data for this area is not cached; run without --cache-only to download it"
         ) from e
-    except overpass_servers.OverpassError as e:
+    except overpass.OverpassError as e:
         raise RuntimeError(f"Failed to retrieve street network data from OpenStreetMap: {e}") from e
     except Exception as e:
         raise RuntimeError(f"Failed to retrieve street network data: {e}") from e
@@ -547,7 +545,7 @@ def create_plotter_poster(g, water, parks, point, compensated_dist, output_file,
         output_file: Destination .svg path
         display_city: City text for the poster
         display_country: Country text for the poster
-        plotter_settings: plotter_svg.PlotterSettings
+        plotter_settings: plotter.PlotterSettings
         edits: Optional poster_edits.Edits
     """
     print("Rendering plotter paths...")
@@ -556,7 +554,7 @@ def create_plotter_poster(g, water, parks, point, compensated_dist, output_file,
     edges = ox.graph_to_gdfs(g_proj, nodes=False)
     crop_xlim, crop_ylim = get_crop_limits(g_proj, point, width_mm / height_mm, compensated_dist)
 
-    scale_factor = min(width_mm, height_mm) / plotter_svg.REFERENCE_SIZE_MM
+    scale_factor = min(width_mm, height_mm) / plotter.REFERENCE_SIZE_MM
     spaced_city, city_size = format_city_title(display_city, scale_factor)
     texts = {
         "city": (spaced_city, city_size),
@@ -565,7 +563,7 @@ def create_plotter_poster(g, water, parks, point, compensated_dist, output_file,
         "attribution": ("© OpenStreetMap contributors", BASE_ATTR),
     }
 
-    plotter_svg.render(
+    plotter.render(
         output_file, edges, water, parks, crop_xlim, crop_ylim, THEME, texts, plotter_settings, edits
     )
     print(f"✓ Done! Plotter SVG saved as {output_file}")
@@ -606,7 +604,7 @@ def create_poster(
         height_mm: Poster height in mm (default: 400, CLI --height)
         country_label: Optional override for country text on poster
         _name_label: Optional override for city name (unused, reserved for future use)
-        plotter_settings: plotter_svg.PlotterSettings, required for the 'plotter' format
+        plotter_settings: plotter.PlotterSettings, required for the 'plotter' format
         dpi: Resolution of PNG output
         edits: Optional poster_edits.Edits (erase regions, text offsets, hidden layers)
 
@@ -677,12 +675,12 @@ def create_poster(
 
     # Project graph to a metric CRS so distances and aspect are linear (meters)
     g_proj = ox.project_graph(g)
-    hidden_roads = {key for key, _, _ in plotter_svg.ROAD_CLASSES if hidden(key)}
+    hidden_roads = {key for key, _, _ in plotter.ROAD_CLASSES if hidden(key)}
     if hidden_roads:
         g_proj = g_proj.copy()
         g_proj.remove_edges_from([
             (u, v, k) for u, v, k, d in g_proj.edges(keys=True, data=True)
-            if plotter_svg.classify_highway(d.get("highway", "unclassified")) in hidden_roads
+            if plotter.classify_highway(d.get("highway", "unclassified")) in hidden_roads
         ])
 
     # 3. Plot Layers
@@ -747,7 +745,7 @@ def create_poster(
 
     # Calculate scale factor based on smaller dimension relative to the reference size
     # This ensures text scales properly for both portrait and landscape orientations
-    scale_factor = min(height_mm, width_mm) / plotter_svg.REFERENCE_SIZE_MM
+    scale_factor = min(height_mm, width_mm) / plotter.REFERENCE_SIZE_MM
 
     # 4. Typography - use custom fonts if provided, otherwise use default FONTS
     active_fonts = fonts or FONTS
@@ -877,47 +875,47 @@ City Map Poster Generator
 =========================
 
 Usage:
-  python create_map_poster.py --city <city> --country <country> [options]
+  maptoposter --city <city> --country <country> [options]
 
 Examples:
   # Iconic grid patterns
-  python create_map_poster.py -c "New York" -C "USA" -t noir -d 12000           # Manhattan grid
-  python create_map_poster.py -c "Barcelona" -C "Spain" -t warm_beige -d 8000   # Eixample district grid
+  maptoposter -c "New York" -C "USA" -t noir -d 12000           # Manhattan grid
+  maptoposter -c "Barcelona" -C "Spain" -t warm_beige -d 8000   # Eixample district grid
 
   # Waterfront & canals
-  python create_map_poster.py -c "Venice" -C "Italy" -t blueprint -d 4000       # Canal network
-  python create_map_poster.py -c "Amsterdam" -C "Netherlands" -t ocean -d 6000  # Concentric canals
-  python create_map_poster.py -c "Dubai" -C "UAE" -t midnight_blue -d 15000     # Palm & coastline
+  maptoposter -c "Venice" -C "Italy" -t blueprint -d 4000       # Canal network
+  maptoposter -c "Amsterdam" -C "Netherlands" -t ocean -d 6000  # Concentric canals
+  maptoposter -c "Dubai" -C "UAE" -t midnight_blue -d 15000     # Palm & coastline
 
   # Radial patterns
-  python create_map_poster.py -c "Paris" -C "France" -t pastel_dream -d 10000   # Haussmann boulevards
-  python create_map_poster.py -c "Moscow" -C "Russia" -t noir -d 12000          # Ring roads
+  maptoposter -c "Paris" -C "France" -t pastel_dream -d 10000   # Haussmann boulevards
+  maptoposter -c "Moscow" -C "Russia" -t noir -d 12000          # Ring roads
 
   # Organic old cities
-  python create_map_poster.py -c "Tokyo" -C "Japan" -t japanese_ink -d 15000    # Dense organic streets
-  python create_map_poster.py -c "Marrakech" -C "Morocco" -t terracotta -d 5000 # Medina maze
-  python create_map_poster.py -c "Rome" -C "Italy" -t warm_beige -d 8000        # Ancient street layout
+  maptoposter -c "Tokyo" -C "Japan" -t japanese_ink -d 15000    # Dense organic streets
+  maptoposter -c "Marrakech" -C "Morocco" -t terracotta -d 5000 # Medina maze
+  maptoposter -c "Rome" -C "Italy" -t warm_beige -d 8000        # Ancient street layout
 
   # Coastal cities
-  python create_map_poster.py -c "San Francisco" -C "USA" -t sunset -d 10000    # Peninsula grid
-  python create_map_poster.py -c "Sydney" -C "Australia" -t ocean -d 12000      # Harbor city
-  python create_map_poster.py -c "Mumbai" -C "India" -t contrast_zones -d 18000 # Coastal peninsula
+  maptoposter -c "San Francisco" -C "USA" -t sunset -d 10000    # Peninsula grid
+  maptoposter -c "Sydney" -C "Australia" -t ocean -d 12000      # Harbor city
+  maptoposter -c "Mumbai" -C "India" -t contrast_zones -d 18000 # Coastal peninsula
 
   # River cities
-  python create_map_poster.py -c "London" -C "UK" -t noir -d 15000              # Thames curves
-  python create_map_poster.py -c "Budapest" -C "Hungary" -t copper_patina -d 8000  # Danube split
+  maptoposter -c "London" -C "UK" -t noir -d 15000              # Thames curves
+  maptoposter -c "Budapest" -C "Hungary" -t copper_patina -d 8000  # Danube split
 
   # Pen plotter SVG (A3, 0.3 mm pen)
-  python create_map_poster.py -c "Venice" -C "Italy" -d 3000 -f plotter -W 297 -H 420
+  maptoposter -c "Venice" -C "Italy" -d 3000 -f plotter -W 297 -H 420
 
   # Plotter SVG with outlined, concentric water
-  python create_map_poster.py -c "Venice" -C "Italy" -d 3000 -f plotter --water-outline --water-fill concentric
+  maptoposter -c "Venice" -C "Italy" -d 3000 -f plotter --water-outline --water-fill concentric
 
   # Quick low-resolution preview from cached data only
-  python create_map_poster.py -c "Venice" -C "Italy" -d 3000 --cache-only --dpi 60 -o preview.png
+  maptoposter -c "Venice" -C "Italy" -d 3000 --cache-only --dpi 60 -o preview.png
 
   # List themes
-  python create_map_poster.py --list-themes
+  maptoposter --list-themes
 
 Options:
   --city, -c        City name (required)
@@ -983,16 +981,17 @@ def list_themes():
 def build_parser():
     """The command-line interface."""
     parser = argparse.ArgumentParser(
+        prog="maptoposter",
         description="Generate beautiful map posters for any city",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python create_map_poster.py --city "New York" --country "USA"
-  python create_map_poster.py --city "New York" --country "USA" -l 40.776676 -73.971321 --theme neon_cyberpunk
-  python create_map_poster.py --city Tokyo --country Japan --theme midnight_blue
-  python create_map_poster.py --city Paris --country France --theme noir --distance 15000
-  python create_map_poster.py --city Venice --country Italy --format plotter --width 297 --height 420
-  python create_map_poster.py --list-themes
+  maptoposter --city "New York" --country "USA"
+  maptoposter --city "New York" --country "USA" -l 40.776676 -73.971321 --theme neon_cyberpunk
+  maptoposter --city Tokyo --country Japan --theme midnight_blue
+  maptoposter --city Paris --country France --theme noir --distance 15000
+  maptoposter --city Venice --country Italy --format plotter --width 297 --height 420
+  maptoposter --list-themes
         """,
     )
 
@@ -1082,7 +1081,7 @@ Examples:
     )
     parser.add_argument(
         "--overpass-url",
-        default=os.environ.get("OVERPASS_URL", overpass_servers.AUTO),
+        default=os.environ.get("OVERPASS_URL", overpass.AUTO),
         help="OpenStreetMap (Overpass API) server, e.g. https://lz4.overpass-api.de/api, or 'auto' to check "
              "the known servers and fall back automatically (default: $OVERPASS_URL or auto)",
     )
@@ -1100,13 +1099,13 @@ Examples:
 
     parser.add_argument(
         "--water-fill",
-        choices=plotter_svg.FILL_MODES,
+        choices=plotter.FILL_MODES,
         default="hatch",
         help="Plotter fill for water: 'hatch' (parallel lines) or 'concentric' (contours) (default: hatch)",
     )
     parser.add_argument(
         "--parks-fill",
-        choices=plotter_svg.FILL_MODES,
+        choices=plotter.FILL_MODES,
         default="hatch",
         help="Plotter fill for parks: 'hatch' or 'concentric' (default: hatch)",
     )
@@ -1179,7 +1178,7 @@ def main(argv=None):
         sys.exit(1)
 
     try:
-        OVERPASS_CHOICE = overpass_servers.normalize(args.overpass_url)
+        OVERPASS_CHOICE = overpass.normalize(args.overpass_url)
     except ValueError as e:
         print(f"Error: --overpass-url: {e}")
         sys.exit(1)
@@ -1210,7 +1209,7 @@ def main(argv=None):
             print(f"Error: {flag} ({value}) must not be less than --pen-width ({args.pen_width}).")
             sys.exit(1)
     if args.format == "plotter":
-        plotter_settings = plotter_svg.PlotterSettings(
+        plotter_settings = plotter.PlotterSettings(
             args.width, args.height, args.pen_width, hatch_spacing,
             water_fill=args.water_fill,
             parks_fill=args.parks_fill,

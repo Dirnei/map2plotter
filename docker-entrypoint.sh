@@ -6,11 +6,11 @@
 set -e
 
 if [ "$#" -eq 0 ]; then
-    exec python web_app.py --host 0.0.0.0 --port "${PORT:-8000}"
+    exec maptoposter-web --host 0.0.0.0 --port "${PORT:-8000}"
 fi
 
 case "$1" in
-    -*) exec python create_map_poster.py "$@" ;;
+    -*) exec maptoposter "$@" ;;
 esac
 
 exec "$@"

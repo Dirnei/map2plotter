@@ -5,7 +5,7 @@ Web Interface
 A local web UI in two steps: load a location (downloading the map data once and
 rendering a quick preview), then customize the poster with live previews that are
 rendered from the cached data only, and export the final poster. Every render runs
-create_map_poster.py as a subprocess; its output is streamed to the page.
+`python -m maptoposter` as a subprocess; its output is streamed to the page.
 """
 
 import argparse
@@ -31,17 +31,16 @@ from fastapi.staticfiles import StaticFiles
 from lat_lon_parser import parse
 from pydantic import BaseModel, ValidationError, field_validator
 
-import overpass_servers
-import poster_colors
-import poster_edits
-import poster_size
+from . import colors as poster_colors
+from . import edits as poster_edits
+from . import overpass, paths
+from . import size as poster_size
 
-ROOT = Path(__file__).resolve().parent
-POSTERS_DIR = ROOT / "posters"
-THEMES_DIR = ROOT / "themes"
-STATIC_DIR = ROOT / "web" / "static"
-CLI_SCRIPT = ROOT / "create_map_poster.py"
-WORK_DIR = ROOT / os.environ.get("CACHE_DIR", "cache") / "web"
+POSTERS_DIR = paths.POSTERS_DIR
+THEMES_DIR = paths.THEMES_DIR
+STATIC_DIR = paths.STATIC_DIR
+CLI_COMMAND = [sys.executable, "-u", "-m", "maptoposter"]
+WORK_DIR = paths.CACHE_DIR / "web"
 
 POSTER_TYPES = {".png": "image/png", ".svg": "image/svg+xml", ".pdf": "application/pdf"}
 PREVIEW_MAX_MM = 500  # Raster previews of larger posters are rendered scaled down (same look)
@@ -73,7 +72,7 @@ class LocationConfig(BaseModel):
     distance: int = 18000
     width: float = 300  # mm
     height: float = 400  # mm
-    overpass_url: str = overpass_servers.AUTO
+    overpass_url: str = overpass.AUTO
 
     @field_validator("latitude", "longitude", mode="before")
     @classmethod
@@ -190,7 +189,7 @@ def validate_location(data):
             errors[name] = "Must be greater than 0"
 
     try:
-        config.overpass_url = overpass_servers.normalize(config.overpass_url)
+        config.overpass_url = overpass.normalize(config.overpass_url)
     except ValueError as e:
         errors["overpass_url"] = str(e)
 
@@ -342,7 +341,7 @@ def preview_size(loc):
 
 def display_command(args):
     """The equivalent shell command line, for users to copy."""
-    return shlex.join(["python", "create_map_poster.py", *args])
+    return shlex.join(["maptoposter", *args])
 
 
 # ---------------------------------------------------------------------------
@@ -491,11 +490,13 @@ async def start_job(kind, args, on_finish=None):
             before=poster_names(), on_finish=on_finish,
         )
         CURRENT_JOB = job
-        env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1", "MPLBACKEND": "Agg"}
+        env = {
+            **os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1", "MPLBACKEND": "Agg",
+            "CACHE_DIR": str(paths.CACHE_DIR.resolve()),  # Same cache as the server, whatever the CLI's cwd
+        }
         try:
             job.proc = await asyncio.create_subprocess_exec(
-                sys.executable, "-u", str(CLI_SCRIPT), *args,
-                cwd=str(ROOT),
+                *CLI_COMMAND, *args,
                 env=env,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
@@ -717,8 +718,8 @@ async def layout(request: Request):
     """Default positions (page mm) of the poster's text lines, for the editor's drag handles."""
     data = await _json_body(request)
     loc = _require_loaded()
-    import create_map_poster as cmp  # heavy import (osmnx, matplotlib): only when needed
-    import plotter_svg
+    from . import plotter
+    from . import poster as cmp  # heavy import (osmnx, matplotlib): only when needed
 
     city = _blank_to_none(data.get("display_city")) or loc.city
     country = _blank_to_none(data.get("display_country")) or _blank_to_none(data.get("country_label")) or loc.country
@@ -726,7 +727,7 @@ async def layout(request: Request):
         coords = cmp.format_coordinates(parse(loc.latitude), parse(loc.longitude))
     else:
         coords = cmp.format_coordinates(0.0, 0.0)  # Same width as real coordinates
-    scale = min(loc.width, loc.height) / plotter_svg.REFERENCE_SIZE_MM
+    scale = min(loc.width, loc.height) / plotter.REFERENCE_SIZE_MM
     spaced_city, city_size = cmp.format_city_title(city, scale)
     texts = {
         "city": (spaced_city, city_size),
@@ -734,7 +735,7 @@ async def layout(request: Request):
         "coords": (coords, cmp.BASE_COORDS * scale),
         "attribution": ("© OpenStreetMap contributors", cmp.BASE_ATTR),
     }
-    boxes = plotter_svg.text_boxes(texts, loc.width, loc.height)
+    boxes = plotter.text_boxes(texts, loc.width, loc.height)
     return {"width": loc.width, "height": loc.height, "boxes": boxes}
 
 
@@ -763,16 +764,16 @@ async def cancel(job_id: str):
 def default_overpass():
     """The server preselected in the UI: $OVERPASS_URL if valid, else automatic."""
     try:
-        return overpass_servers.normalize(os.environ.get("OVERPASS_URL"))
+        return overpass.normalize(os.environ.get("OVERPASS_URL"))
     except ValueError:
-        return overpass_servers.AUTO
+        return overpass.AUTO
 
 
 @app.get("/api/overpass/servers")
 def overpass_server_list():
     return {
         "default": default_overpass(),
-        "servers": [{"url": url, "label": label} for url, label in overpass_servers.SERVERS],
+        "servers": [{"url": url, "label": label} for url, label in overpass.SERVERS],
     }
 
 
@@ -783,16 +784,16 @@ async def overpass_check(request: Request):
         data = await request.json()
     except json.JSONDecodeError:
         data = {}
-    urls = [url for url, _ in overpass_servers.SERVERS]
+    urls = [url for url, _ in overpass.SERVERS]
     custom = data.get("custom") if isinstance(data, dict) else None
     if custom:
         try:
-            custom = overpass_servers.normalize(custom)
+            custom = overpass.normalize(custom)
         except ValueError as e:
             return JSONResponse({"detail": str(e), "errors": {"overpass_url": str(e)}}, status_code=422)
-        if custom != overpass_servers.AUTO and custom not in urls:
+        if custom != overpass.AUTO and custom not in urls:
             urls.append(custom)
-    return await asyncio.to_thread(overpass_servers.check_servers, urls)
+    return await asyncio.to_thread(overpass.check_servers, urls)
 
 
 @app.get("/api/posters")
@@ -825,7 +826,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Web interface for the map poster generator")
+    parser = argparse.ArgumentParser(prog="maptoposter-web", description="Web interface for the map poster generator")
     parser.add_argument("--host", default="127.0.0.1", help="Address to bind (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8000, help="Port to listen on (default: 8000)")
     args = parser.parse_args()

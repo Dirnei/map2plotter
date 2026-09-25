@@ -2,38 +2,35 @@
 
 Generate beautiful, minimalist map posters for any city in the world.
 
-<img src="posters/singapore_neon_cyberpunk_20260118_153328.png" width="250">
-<img src="posters/dubai_midnight_blue_20260118_140807.png" width="250">
+<img src="docs/images/singapore_neon_cyberpunk_20260118_153328.png" width="250">
+<img src="docs/images/dubai_midnight_blue_20260118_140807.png" width="250">
 
 ## Examples
 
 
 | Country      | City           | Theme           | Poster |
 |:------------:|:--------------:|:---------------:|:------:|
-| USA          | San Francisco  | sunset          | <img src="posters/san_francisco_sunset_20260118_144726.png" width="250"> |
-| Spain        | Barcelona      | warm_beige      | <img src="posters/barcelona_warm_beige_20260118_140048.png" width="250"> |
-| Italy        | Venice         | blueprint       | <img src="posters/venice_blueprint_20260118_140505.png" width="250"> |
-| Japan        | Tokyo          | japanese_ink    | <img src="posters/tokyo_japanese_ink_20260118_142446.png" width="250"> |
-| India        | Mumbai         | contrast_zones  | <img src="posters/mumbai_contrast_zones_20260118_145843.png" width="250"> |
-| Morocco      | Marrakech      | terracotta      | <img src="posters/marrakech_terracotta_20260118_143253.png" width="250"> |
-| Singapore    | Singapore      | neon_cyberpunk  | <img src="posters/singapore_neon_cyberpunk_20260118_153328.png" width="250"> |
-| Australia    | Melbourne      | forest          | <img src="posters/melbourne_forest_20260118_153446.png" width="250"> |
-| UAE          | Dubai          | midnight_blue   | <img src="posters/dubai_midnight_blue_20260118_140807.png" width="250"> |
-| USA          | Seattle        | emerald         | <img src="posters/seattle_emerald_20260124_162244.png" width="250"> |
+| USA          | San Francisco  | sunset          | <img src="docs/images/san_francisco_sunset_20260118_144726.png" width="250"> |
+| Spain        | Barcelona      | warm_beige      | <img src="docs/images/barcelona_warm_beige_20260118_140048.png" width="250"> |
+| Italy        | Venice         | blueprint       | <img src="docs/images/venice_blueprint_20260118_140505.png" width="250"> |
+| Japan        | Tokyo          | japanese_ink    | <img src="docs/images/tokyo_japanese_ink_20260118_142446.png" width="250"> |
+| India        | Mumbai         | contrast_zones  | <img src="docs/images/mumbai_contrast_zones_20260118_145843.png" width="250"> |
+| Morocco      | Marrakech      | terracotta      | <img src="docs/images/marrakech_terracotta_20260118_143253.png" width="250"> |
+| Singapore    | Singapore      | neon_cyberpunk  | <img src="docs/images/singapore_neon_cyberpunk_20260118_153328.png" width="250"> |
+| Australia    | Melbourne      | forest          | <img src="docs/images/melbourne_forest_20260118_153446.png" width="250"> |
+| UAE          | Dubai          | midnight_blue   | <img src="docs/images/dubai_midnight_blue_20260118_140807.png" width="250"> |
+| USA          | Seattle        | emerald         | <img src="docs/images/seattle_emerald_20260124_162244.png" width="250"> |
 
 ## Installation
 
 ### With uv (Recommended)
 
-Make sure [uv](https://docs.astral.sh/uv/) is installed. Running the script by prepending `uv run` automatically creates and manages a virtual environment.
+Make sure [uv](https://docs.astral.sh/uv/) is installed. In a clone of this repository, `uv sync` creates a virtual environment with the locked dependencies and installs the `maptoposter` package into it. `uv run` then starts its commands:
 
 ```bash
-# First run will automatically install dependencies
-uv run ./create_map_poster.py --city "Paris" --country "France"
-
-# Or sync dependencies explicitly first (using locked versions)
-uv sync --locked
-uv run ./create_map_poster.py --city "Paris" --country "France"
+uv sync
+uv run maptoposter --city "Paris" --country "France"   # poster CLI
+uv run maptoposter-web                                 # web interface
 ```
 
 ### With pip + venv
@@ -42,7 +39,11 @@ uv run ./create_map_poster.py --city "Paris" --country "France"
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+pip install -e .
+maptoposter --city "Paris" --country "France"
 ```
+
+`python -m maptoposter` works the same as `maptoposter`. Posters are written to `posters/` and map data is cached in `cache/`, both in the current directory (set `CACHE_DIR` to use another cache directory).
 
 ### With Docker Compose (web interface)
 
@@ -106,12 +107,12 @@ docker run --rm -v $(pwd)/posters:/app/posters -v $(pwd)/cache:/app/cache \
 
 If you're using `uv`:
 ```bash
-uv run ./create_map_poster.py --city <city> --country <country> [options]
+uv run maptoposter --city <city> --country <country> [options]
 ```
 
-Otherwise (pip + venv):
+Otherwise (pip + venv, with the environment activated):
 ```bash
-python create_map_poster.py --city <city> --country <country> [options]
+maptoposter --city <city> --country <country> [options]
 ```
 
 ### Web Interface
@@ -119,9 +120,11 @@ python create_map_poster.py --city <city> --country <country> [options]
 Rather than typing CLI flags, you can configure a poster in your browser:
 
 ```bash
-python web_app.py              # then open http://127.0.0.1:8000/
-python web_app.py --port 9000  # use another port
+maptoposter-web              # then open http://127.0.0.1:8000/
+maptoposter-web --port 9000  # use another port
 ```
+
+Prefix the commands with `uv run` if you use uv. The server uses `posters/` and `cache/` in the directory it is started from, like the CLI.
 
 The page works in two steps:
 
@@ -141,7 +144,7 @@ In the Customize step, you can edit the preview directly:
 
 Edits are stored in page millimetres and applied again on every re-render and export (see [Edit lists](#edit-lists)), so switching the theme, format or pen keeps them. Loading a different location or size clears them after a confirmation.
 
-The page also shows the exact `create_map_poster.py` command of the last load or export, and lists everything in `posters/`. Previews are kept in `cache/web/` and do not appear there. One job runs at a time; a newer preview replaces one that is still rendering.
+The page also shows the exact `maptoposter` command of the last load or export, and lists everything in `posters/`. Previews are kept in `cache/web/` and do not appear there. One job runs at a time; a newer preview replaces one that is still rendering.
 
 With Docker, run `docker compose up -d` or start the container without arguments (see [With Docker Compose](#with-docker-compose-web-interface)).
 
@@ -208,13 +211,13 @@ How the poster is turned into pen paths:
 
 ```bash
 # A3 portrait poster for a 0.3 mm fineliner
-python create_map_poster.py -c "Venice" -C "Italy" -d 3000 --format plotter --width 297 --height 420 --pen-width 0.3
+maptoposter -c "Venice" -C "Italy" -d 3000 --format plotter --width 297 --height 420 --pen-width 0.3
 
 # Thicker pen with sparser hatching for faster plots
-python create_map_poster.py -c "Paris" -C "France" --format plotter --width 300 --height 400 --pen-width 0.5 --hatch-spacing 1.5
+maptoposter -c "Paris" -C "France" --format plotter --width 300 --height 400 --pen-width 0.5 --hatch-spacing 1.5
 
 # Outlined water with concentric fill, sparse parks
-python create_map_poster.py -c "Amsterdam" -C "Netherlands" -d 4000 -f plotter --water-outline --water-fill concentric --water-spacing 0.8 --parks-spacing 2
+maptoposter -c "Amsterdam" -C "Netherlands" -d 4000 -f plotter --water-outline --water-fill concentric --water-spacing 0.8 --parks-spacing 2
 ```
 
 **Tip:** paths are already sorted to keep pen-up travel short. To optimise further, post-process the file with [vpype](https://github.com/abey79/vpype), which keeps the layers:
@@ -256,16 +259,16 @@ Display city and country names in your language with custom fonts from google fo
 
 ```bash
 # Japanese
-python create_map_poster.py -c "Tokyo" -C "Japan" -dc "東京" -dC "日本" --font-family "Noto Sans JP"
+maptoposter -c "Tokyo" -C "Japan" -dc "東京" -dC "日本" --font-family "Noto Sans JP"
 
 # Korean
-python create_map_poster.py -c "Seoul" -C "South Korea" -dc "서울" -dC "대한민국" --font-family "Noto Sans KR"
+maptoposter -c "Seoul" -C "South Korea" -dc "서울" -dC "대한민국" --font-family "Noto Sans KR"
 
 # Arabic
-python create_map_poster.py -c "Dubai" -C "UAE" -dc "دبي" -dC "الإمارات" --font-family "Cairo"
+maptoposter -c "Dubai" -C "UAE" -dc "دبي" -dC "الإمارات" --font-family "Cairo"
 ```
 
-**Note**: Fonts are automatically downloaded from Google Fonts and cached locally in `fonts/cache/`.
+**Note**: Fonts are automatically downloaded from Google Fonts and cached locally in `cache/fonts/`.
 
 ### Resolution Guide (300 DPI)
 
@@ -287,10 +290,10 @@ PNG output is rendered at 300 DPI by default (`--dpi` changes it). Use these val
 #### Basic Examples
 ```bash
 # Simple usage with default theme
-python create_map_poster.py -c "Paris" -C "France"
+maptoposter -c "Paris" -C "France"
 
 # With custom theme and distance
-python create_map_poster.py -c "New York" -C "USA" -t noir -d 12000
+maptoposter -c "New York" -C "USA" -t noir -d 12000
 ```
 
 #### Multilingual Examples (Non-Latin Scripts)
@@ -299,61 +302,61 @@ Display city names in their native scripts:
 
 ```bash
 # Japanese
-python create_map_poster.py -c "Tokyo" -C "Japan" -dc "東京" -dC "日本" --font-family "Noto Sans JP" -t japanese_ink
+maptoposter -c "Tokyo" -C "Japan" -dc "東京" -dC "日本" --font-family "Noto Sans JP" -t japanese_ink
 
 # Korean
-python create_map_poster.py -c "Seoul" -C "South Korea" -dc "서울" -dC "대한민국" --font-family "Noto Sans KR" -t midnight_blue
+maptoposter -c "Seoul" -C "South Korea" -dc "서울" -dC "대한민국" --font-family "Noto Sans KR" -t midnight_blue
 
 # Thai
-python create_map_poster.py -c "Bangkok" -C "Thailand" -dc "กรุงเทพมหานคร" -dC "ประเทศไทย" --font-family "Noto Sans Thai" -t sunset
+maptoposter -c "Bangkok" -C "Thailand" -dc "กรุงเทพมหานคร" -dC "ประเทศไทย" --font-family "Noto Sans Thai" -t sunset
 
 # Arabic
-python create_map_poster.py -c "Dubai" -C "UAE" -dc "دبي" -dC "الإمارات" --font-family "Cairo" -t terracotta
+maptoposter -c "Dubai" -C "UAE" -dc "دبي" -dC "الإمارات" --font-family "Cairo" -t terracotta
 
 # Chinese (Simplified)
-python create_map_poster.py -c "Beijing" -C "China" -dc "北京" -dC "中国" --font-family "Noto Sans SC"
+maptoposter -c "Beijing" -C "China" -dc "北京" -dC "中国" --font-family "Noto Sans SC"
 
 # Khmer
-python create_map_poster.py -c "Phnom Penh" -C "Cambodia" -dc "ភ្នំពេញ" -dC "កម្ពុជា" --font-family "Noto Sans Khmer"
+maptoposter -c "Phnom Penh" -C "Cambodia" -dc "ភ្នំពេញ" -dC "កម្ពុជា" --font-family "Noto Sans Khmer"
 ```
 
 #### Advanced Examples
 ```bash
 # Iconic grid patterns
-python create_map_poster.py -c "New York" -C "USA" -t noir -d 12000           # Manhattan grid
-python create_map_poster.py -c "Barcelona" -C "Spain" -t warm_beige -d 8000   # Eixample district
+maptoposter -c "New York" -C "USA" -t noir -d 12000           # Manhattan grid
+maptoposter -c "Barcelona" -C "Spain" -t warm_beige -d 8000   # Eixample district
 
 # Waterfront & canals
-python create_map_poster.py -c "Venice" -C "Italy" -t blueprint -d 4000       # Canal network
-python create_map_poster.py -c "Amsterdam" -C "Netherlands" -t ocean -d 6000  # Concentric canals
-python create_map_poster.py -c "Dubai" -C "UAE" -t midnight_blue -d 15000     # Palm & coastline
+maptoposter -c "Venice" -C "Italy" -t blueprint -d 4000       # Canal network
+maptoposter -c "Amsterdam" -C "Netherlands" -t ocean -d 6000  # Concentric canals
+maptoposter -c "Dubai" -C "UAE" -t midnight_blue -d 15000     # Palm & coastline
 
 # Radial patterns
-python create_map_poster.py -c "Paris" -C "France" -t pastel_dream -d 10000   # Haussmann boulevards
-python create_map_poster.py -c "Moscow" -C "Russia" -t noir -d 12000          # Ring roads
+maptoposter -c "Paris" -C "France" -t pastel_dream -d 10000   # Haussmann boulevards
+maptoposter -c "Moscow" -C "Russia" -t noir -d 12000          # Ring roads
 
 # Organic old cities
-python create_map_poster.py -c "Tokyo" -C "Japan" -t japanese_ink -d 15000    # Dense organic streets
-python create_map_poster.py -c "Marrakech" -C "Morocco" -t terracotta -d 5000 # Medina maze
-python create_map_poster.py -c "Rome" -C "Italy" -t warm_beige -d 8000        # Ancient layout
+maptoposter -c "Tokyo" -C "Japan" -t japanese_ink -d 15000    # Dense organic streets
+maptoposter -c "Marrakech" -C "Morocco" -t terracotta -d 5000 # Medina maze
+maptoposter -c "Rome" -C "Italy" -t warm_beige -d 8000        # Ancient layout
 
 # Coastal cities
-python create_map_poster.py -c "San Francisco" -C "USA" -t sunset -d 10000    # Peninsula grid
-python create_map_poster.py -c "Sydney" -C "Australia" -t ocean -d 12000      # Harbor city
-python create_map_poster.py -c "Mumbai" -C "India" -t contrast_zones -d 18000 # Coastal peninsula
+maptoposter -c "San Francisco" -C "USA" -t sunset -d 10000    # Peninsula grid
+maptoposter -c "Sydney" -C "Australia" -t ocean -d 12000      # Harbor city
+maptoposter -c "Mumbai" -C "India" -t contrast_zones -d 18000 # Coastal peninsula
 
 # River cities
-python create_map_poster.py -c "London" -C "UK" -t noir -d 15000              # Thames curves
-python create_map_poster.py -c "Budapest" -C "Hungary" -t copper_patina -d 8000  # Danube split
+maptoposter -c "London" -C "UK" -t noir -d 15000              # Thames curves
+maptoposter -c "Budapest" -C "Hungary" -t copper_patina -d 8000  # Danube split
 
 # Override center coordinates
-python create_map_poster.py --city "New York" --country "USA" -lat 40.776676 -long -73.971321 -t noir
+maptoposter --city "New York" --country "USA" -lat 40.776676 -long -73.971321 -t noir
 
 # List available themes
-python create_map_poster.py --list-themes
+maptoposter --list-themes
 
 # Generate posters for every theme
-python create_map_poster.py -c "Tokyo" -C "Japan" --all-themes
+maptoposter -c "Tokyo" -C "Japan" --all-themes
 ```
 
 ### Distance Guide
@@ -366,7 +369,7 @@ python create_map_poster.py -c "Tokyo" -C "Japan" --all-themes
 
 ## Themes
 
-17 themes available in `themes/` directory:
+17 themes available in `src/maptoposter/data/themes/`:
 
 | Theme | Style |
 |-------|-------|
@@ -397,7 +400,7 @@ Posters are saved to `posters/` directory with format:
 
 ## Adding Custom Themes
 
-Create a JSON file in `themes/` directory:
+Create a JSON file in `src/maptoposter/data/themes/` (then run `uv sync` or `pip install -e .` again if you use a non-editable install):
 
 ```json
 {
@@ -420,14 +423,23 @@ Create a JSON file in `themes/` directory:
 ## Project Structure
 
 ```
-map_poster/
-├── create_map_poster.py    # Main script
-├── font_management.py      # Font loading and Google Fonts integration
-├── themes/                 # Theme JSON files
-├── fonts/                  # Font files
-│   ├── Roboto-*.ttf        # Default Roboto fonts
-│   └── cache/              # Downloaded Google Fonts (auto-generated)
-├── posters/                # Generated posters
+maptoposter/
+├── src/maptoposter/
+│   ├── poster.py           # Rendering and the maptoposter CLI
+│   ├── web.py              # Web interface (maptoposter-web)
+│   ├── fonts.py            # Font loading and Google Fonts integration
+│   ├── osm_cache.py        # Map data cache
+│   ├── overpass.py         # OpenStreetMap (Overpass) servers and fallback
+│   ├── plotter.py          # Pen plotter SVG output
+│   ├── colors.py / edits.py / size.py
+│   ├── paths.py            # Package data and working-directory paths
+│   ├── data/themes/        # Theme JSON files
+│   ├── data/fonts/         # Default Roboto fonts
+│   └── static/             # Web interface files
+├── test/                   # pytest suite
+├── docs/images/            # README example posters
+├── posters/                # Generated posters (git-ignored)
+├── cache/                  # Map data, Google Fonts, web previews (git-ignored)
 └── README.md
 ```
 

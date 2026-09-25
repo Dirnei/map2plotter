@@ -6,11 +6,12 @@ Handles font loading, Google Fonts integration, and caching.
 import os
 import requests
 import re
-from pathlib import Path
 from typing import Optional
 
-FONTS_DIR = "fonts"
-FONTS_CACHE_DIR = Path(FONTS_DIR) / "cache"
+from . import paths
+
+FONTS_DIR = paths.FONTS_DIR
+FONTS_CACHE_DIR = paths.CACHE_DIR / "fonts"
 
 
 def download_google_font(font_family: str, weights: list = None) -> Optional[dict]:
@@ -121,10 +122,10 @@ def download_google_font(font_family: str, weights: list = None) -> Optional[dic
         # If we don't have all three weights, duplicate available ones
         if "bold" not in font_files and "regular" in font_files:
             font_files["bold"] = font_files["regular"]
-            print(f"  Using regular weight as bold")
+            print("  Using regular weight as bold")
         if "light" not in font_files and "regular" in font_files:
             font_files["light"] = font_files["regular"]
-            print(f"  Using regular weight as light")
+            print("  Using regular weight as light")
 
         return font_files if font_files else None
 

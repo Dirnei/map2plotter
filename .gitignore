@@ -1,4 +1,6 @@
-cache/*
+# Map data cache and generated posters
+cache/
+posters/
 
 # Virtual environments
 env/
@@ -25,8 +27,6 @@ __pycache__/
 Thumbs.db
 .cache/*
 
-# Package manager
-uv.lock
 
 # Test outputs
 test_venv/

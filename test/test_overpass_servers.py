@@ -6,7 +6,7 @@ import requests
 from osmnx import _overpass
 from osmnx._errors import InsufficientResponseError, ResponseStatusCodeError
 
-import overpass_servers as osrv
+import maptoposter.overpass as osrv
 
 A, B, C = "https://a.example/api", "https://b.example/api", "https://c.example/api"
 

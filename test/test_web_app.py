@@ -2,13 +2,14 @@
 
 import json
 import os
+import sys
 import textwrap
 import time
 
 import pytest
 from fastapi.testclient import TestClient
 
-import web_app
+from maptoposter import web
 
 THEME = {"name": "Noir", "description": "Dark", "bg": "#000000", "text": "#FFFFFF"}
 PARIS = {"city": "Paris", "country": "France"}
@@ -26,11 +27,11 @@ def env(tmp_path, monkeypatch):
         json.dumps({"name": "Terracotta", "description": "Warm", "bg": "#F5EDE4", "water": "#A8C4C4"}),
         encoding="utf-8",
     )
-    monkeypatch.setattr(web_app, "POSTERS_DIR", posters)
-    monkeypatch.setattr(web_app, "THEMES_DIR", themes)
-    monkeypatch.setattr(web_app, "WORK_DIR", tmp_path / "work")
-    monkeypatch.setattr(web_app, "CURRENT_JOB", None)
-    monkeypatch.setattr(web_app, "_START_LOCK", None)
+    monkeypatch.setattr(web, "POSTERS_DIR", posters)
+    monkeypatch.setattr(web, "THEMES_DIR", themes)
+    monkeypatch.setattr(web, "WORK_DIR", tmp_path / "work")
+    monkeypatch.setattr(web, "CURRENT_JOB", None)
+    monkeypatch.setattr(web, "_START_LOCK", None)
 
     def fake_cli(body):
         script = tmp_path / "fake_cli.py"
@@ -40,9 +41,9 @@ def env(tmp_path, monkeypatch):
             + textwrap.dedent(body),
             encoding="utf-8",
         )
-        monkeypatch.setattr(web_app, "CLI_SCRIPT", script)
+        monkeypatch.setattr(web, "CLI_COMMAND", [sys.executable, "-u", str(script)])
 
-    with TestClient(web_app.app) as client:
+    with TestClient(web.app) as client:
         yield client, posters, fake_cli
 
 
@@ -92,7 +93,7 @@ def run_to_end(client, job_id):
 def wait_for_output(timeout=10):
     deadline = time.time() + timeout
     while time.time() < deadline:
-        if web_app.CURRENT_JOB and web_app.CURRENT_JOB.lines:
+        if web.CURRENT_JOB and web.CURRENT_JOB.lines:
             return
         time.sleep(0.05)
     raise AssertionError("no output from job")
@@ -122,7 +123,7 @@ def test_missing_city_rejected(env):
     res = client.post("/api/load", json={"country": "France"})
     assert res.status_code == 422
     assert "city" in res.json()["errors"]
-    assert web_app.CURRENT_JOB is None
+    assert web.CURRENT_JOB is None
 
 
 @pytest.mark.parametrize("data, field", [
@@ -152,21 +153,21 @@ def test_location_validation(env, data, field):
     ({"colors": {"water": "blue"}}, "colors"),
 ])
 def test_customize_validation(env, data, field):
-    _, errors = web_app.validate_customize(data)
+    _, errors = web.validate_customize(data)
     assert field in errors
 
 
 def test_unknown_theme_allowed_with_all_themes(env):
-    _, errors = web_app.validate_customize({"theme": "x", "all_themes": True})
+    _, errors = web.validate_customize({"theme": "x", "all_themes": True})
     assert not errors
 
 
 def test_any_positive_print_size_accepted(env):
-    loc, errors = web_app.validate_location({**PARIS, "width": 841, "height": 1189})
+    loc, errors = web.validate_location({**PARIS, "width": 841, "height": 1189})
     assert not errors and loc.mode == "print"
-    _, errors = web_app.validate_location({**PARIS, "width": 0})
+    _, errors = web.validate_location({**PARIS, "width": 0})
     assert "width" in errors
-    loc, errors = web_app.validate_location({**PARIS, "mode": "plotter", "width": 841, "height": 1189})
+    loc, errors = web.validate_location({**PARIS, "mode": "plotter", "width": 841, "height": 1189})
     assert not errors and loc.mode == "plotter"
 
 
@@ -179,8 +180,8 @@ def test_png_export_pixel_limit(env):
     job = client.post("/api/preview", json={"format": "png"}).json()
     _, status = run_to_end(client, job["id"])
     assert status["status"] == "succeeded"
-    args = web_app.CURRENT_JOB.args
-    assert args[args.index("--dpi") + 1] == str(web_app.preview_dpi(*web_app.preview_size(web_app.SESSION.location)))
+    args = web.CURRENT_JOB.args
+    assert args[args.index("--dpi") + 1] == str(web.preview_dpi(*web.preview_size(web.SESSION.location)))
     # A fitting dpi, or a vector format, is accepted
     job = client.post("/api/export", json={"format": "png", "dpi": 293}).json()
     run_to_end(client, job["id"])
@@ -191,11 +192,11 @@ def test_png_export_pixel_limit(env):
 
 
 def test_format_follows_workflow(env):
-    plotter, _ = web_app.validate_location({**PARIS, "mode": "plotter", "width": 600, "height": 900})
-    custom, errors = web_app.validate_customize({"format": "png"}, plotter)
+    plotter, _ = web.validate_location({**PARIS, "mode": "plotter", "width": 600, "height": 900})
+    custom, errors = web.validate_customize({"format": "png"}, plotter)
     assert not errors and custom.format == "plotter"
-    printing, _ = web_app.validate_location(PARIS)
-    _, errors = web_app.validate_customize({"format": "plotter"}, printing)
+    printing, _ = web.validate_location(PARIS)
+    _, errors = web.validate_customize({"format": "plotter"}, printing)
     assert "format" in errors
 
 
@@ -216,25 +217,25 @@ def test_plotter_workflow_load_and_preview(env):
 
 
 def _loc(**kwargs):
-    return web_app.LocationConfig(**{**PARIS, **kwargs})
+    return web.LocationConfig(**{**PARIS, **kwargs})
 
 
 def _custom(**kwargs):
-    return web_app.CustomizeConfig(**kwargs)
+    return web.CustomizeConfig(**kwargs)
 
 
 def test_export_args_basic():
-    args = web_app.location_args(_loc(distance=10000)) + web_app.customize_args(_custom(theme="noir", format="svg"))
+    args = web.location_args(_loc(distance=10000)) + web.customize_args(_custom(theme="noir", format="svg"))
     assert args == [
         "--city", "Paris", "--country", "France", "--distance", "10000", "--width", "300", "--height", "400",
         "--overpass-url", "auto", "--theme", "noir", "--format", "svg",
     ]
-    assert web_app.display_command(args).startswith("python create_map_poster.py --city Paris")
+    assert web.display_command(args).startswith("maptoposter --city Paris")
 
 
 def test_args_plotter_and_optional_fields():
-    args = web_app.location_args(_loc(latitude="40.7", longitude="-73.9", width=841, height=1189))
-    args += web_app.customize_args(_custom(
+    args = web.location_args(_loc(latitude="40.7", longitude="-73.9", width=841, height=1189))
+    args += web.customize_args(_custom(
         format="plotter", pen_width=0.5, hatch_spacing=1, display_city="東京", all_themes=True,
         water_fill="concentric", water_spacing=1, water_outline=True,
     ))
@@ -249,19 +250,19 @@ def test_args_plotter_and_optional_fields():
 
 
 def test_plotter_options_omitted_for_other_formats():
-    args = web_app.customize_args(_custom(format="png", hatch_spacing=1, water_outline=True))
+    args = web.customize_args(_custom(format="png", hatch_spacing=1, water_outline=True))
     assert "--hatch-spacing" not in args and "--pen-width" not in args and "--water-outline" not in args
 
 
 def test_no_shell_interpretation():
-    args = web_app.location_args(_loc(city="Paris; rm -rf /"))
+    args = web.location_args(_loc(city="Paris; rm -rf /"))
     assert args[:2] == ["--city", "Paris; rm -rf /"]
 
 
 def test_preview_size_and_dpi():
-    assert web_app.preview_size(_loc(width=841, height=1189)) == pytest.approx((500 * 841 / 1189, 500))
-    assert web_app.preview_size(_loc()) == (300, 400)
-    assert web_app.preview_dpi(300, 400) == round(2000 / (400 / 25.4))
+    assert web.preview_size(_loc(width=841, height=1189)) == pytest.approx((500 * 841 / 1189, 500))
+    assert web.preview_size(_loc()) == (300, 400)
+    assert web.preview_dpi(300, 400) == round(2000 / (400 / 25.4))
 
 
 # --- Load, preview, export ------------------------------------------------------
@@ -320,7 +321,7 @@ def test_preview_uses_cache_only_and_edits(env):
     job = client.post("/api/preview", json={"theme": "noir", "edits": edits}).json()
     _, status = run_to_end(client, job["id"])
     assert status["status"] == "succeeded"
-    args = web_app.CURRENT_JOB.args
+    args = web.CURRENT_JOB.args
     assert "--cache-only" in args and "--output" in args and "--edits" in args
     assert args[args.index("--theme") + 1] == "noir"
     assert args[args.index("--format") + 1] == "png"
@@ -335,7 +336,7 @@ def test_plotter_preview_is_svg(env):
     job = client.post("/api/preview", json={"format": "plotter", "water_outline": True}).json()
     _, status = run_to_end(client, job["id"])
     assert status["preview"]["type"] == "svg"
-    args = web_app.CURRENT_JOB.args
+    args = web.CURRENT_JOB.args
     assert "--water-outline" in args and "--dpi" not in args
     assert client.get("/api/preview").headers["content-type"].startswith("image/svg+xml")
 
@@ -345,7 +346,7 @@ def test_empty_edits_not_passed(env):
     load_paris(client, fake_cli)
     job = client.post("/api/preview", json={"edits": {}}).json()
     run_to_end(client, job["id"])
-    assert "--edits" not in web_app.CURRENT_JOB.args
+    assert "--edits" not in web.CURRENT_JOB.args
 
 
 def test_not_cached_preview_reported(env):
@@ -384,7 +385,7 @@ def test_newer_preview_replaces_running_preview(env):
     assert second["id"] != first["id"]
     _, status = run_to_end(client, second["id"])
     assert status["status"] == "succeeded"
-    assert web_app.CURRENT_JOB.id == second["id"]
+    assert web.CURRENT_JOB.id == second["id"]
 
 
 def test_concurrent_request_rejected_then_cancel(env):
@@ -397,7 +398,7 @@ def test_concurrent_request_rejected_then_cancel(env):
     assert client.post("/api/export", json={}).status_code == 409
     assert client.post("/api/preview", json={}).status_code == 409
     assert client.post("/api/load", json=PARIS).status_code == 409
-    assert web_app.CURRENT_JOB.id == first["id"]
+    assert web.CURRENT_JOB.id == first["id"]
 
     cancelled = client.post(f"/api/jobs/{first['id']}/cancel").json()
     assert cancelled["status"] == "cancelled"
@@ -465,7 +466,7 @@ def test_poster_served_inline_and_as_download(env):
     assert res.headers["content-disposition"].startswith("attachment")
 
 
-@pytest.mark.parametrize("name", ["../create_map_poster.py", "..%2Fweb_app.py", "..%5Cweb_app.py", "notes.txt"])
+@pytest.mark.parametrize("name", ["../pyproject.toml", "..%2Fpyproject.toml", "..%5Cpyproject.toml", "notes.txt"])
 def test_unsafe_poster_names_rejected(env, name):
     client, posters, _ = env
     (posters / "notes.txt").write_text("secret")
@@ -481,9 +482,9 @@ def test_no_preview_404(env):
 
 
 def test_overpass_url_normalized():
-    loc, errors = web_app.validate_location({**PARIS, "overpass_url": "https://lz4.overpass-api.de/api/interpreter"})
+    loc, errors = web.validate_location({**PARIS, "overpass_url": "https://lz4.overpass-api.de/api/interpreter"})
     assert not errors
-    args = web_app.location_args(loc)
+    args = web.location_args(loc)
     assert args[args.index("--overpass-url") + 1] == "https://lz4.overpass-api.de/api"
 
 
@@ -507,10 +508,10 @@ def test_server_check(env, monkeypatch):
             {"url": u, "ok": i == 1, "ms": 100, "error": None if i == 1 else "HTTP 504"} for i, u in enumerate(urls)
         ]
 
-    monkeypatch.setattr(web_app.overpass_servers, "check_servers", fake_check)
+    monkeypatch.setattr(web.overpass, "check_servers", fake_check)
     body = client.post("/api/overpass/check", json={"custom": "https://my.example/api/interpreter"}).json()
     assert seen[-1] == "https://my.example/api"
-    assert len(body) == len(web_app.overpass_servers.SERVERS) + 1
+    assert len(body) == len(web.overpass.SERVERS) + 1
     assert body[1]["ok"] and not body[0]["ok"]
     assert client.post("/api/overpass/check", json={"custom": "nope"}).status_code == 422
 
@@ -518,10 +519,10 @@ def test_server_check(env, monkeypatch):
 def test_export_passes_only_changed_colors(env):
     client, _, fake_cli = env
     load_paris(client, fake_cli, mode="plotter")
-    base = web_app.theme_colors("terracotta")
+    base = web.theme_colors("terracotta")
     colors = {"bg": base["bg"], "water": "#1F5FA8"}  # bg unchanged, water changed
     job = client.post("/api/export", json={"theme": "terracotta", "colors": colors}).json()
     run_to_end(client, job["id"])
-    args = web_app.CURRENT_JOB.args
+    args = web.CURRENT_JOB.args
     assert [args[i + 1] for i, a in enumerate(args) if a == "--color"] == ["water=#1f5fa8"]
     assert "--color 'water=#1f5fa8'" in job["command"]

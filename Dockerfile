@@ -24,22 +24,13 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application files
-COPY create_map_poster.py .
-COPY font_management.py .
-COPY osm_cache.py .
-COPY overpass_servers.py .
-COPY plotter_svg.py .
-COPY poster_edits.py .
-COPY poster_colors.py .
-COPY poster_size.py .
-COPY web_app.py .
-COPY web/ web/
-COPY themes/ themes/
-COPY fonts/ fonts/
+# Install the package (dependencies come from requirements.txt)
+COPY pyproject.toml README.md ./
+COPY src/ src/
+RUN pip install --no-cache-dir --no-deps .
 
-# Create directories for output and caches
-RUN mkdir -p posters cache fonts/cache
+# Create directories for output and the cache (map data, fonts, web previews)
+RUN mkdir -p posters cache
 
 # Entrypoint: web interface by default, CLI when given --options
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

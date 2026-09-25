@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from shapely.geometry import LineString, MultiLineString, Point, Polygon, box
 
-import plotter_svg as ps
+import maptoposter.plotter as ps
 
 SVG = "{http://www.w3.org/2000/svg}"
 INK = "{http://www.inkscape.org/namespaces/inkscape}"
@@ -342,7 +342,7 @@ def test_long_text_fits_page():
 
 # --- Fill modes, water outline, edits ----------------------------------------
 
-import poster_edits  # noqa: E402
+from maptoposter import edits as poster_edits  # noqa: E402
 
 
 def test_concentric_rings_closed_inside_and_spaced():

@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Text scaling for landscape orientations** - Font size now scales based on `min(height, width)` instead of just width (fixes [#112](https://github.com/originalankur/maptoposter/issues/112))
 
 ### Changed
+- **BREAKING: package layout and commands**: the code is now the `maptoposter` package in `src/maptoposter/`
+  - `maptoposter` replaces `python create_map_poster.py` and `maptoposter-web` replaces `python web_app.py`; `python -m maptoposter` also works (in a clone: `uv sync`, then `uv run maptoposter`)
+  - Themes, the Roboto fonts and the web files are bundled in the package and found from any working directory; custom themes go in `src/maptoposter/data/themes/`
+  - Downloaded Google Fonts are cached in `cache/fonts/` instead of `fonts/cache/`; the Docker `font-cache` volume is removed
+  - `pyproject.toml` lists only direct dependencies with version ranges; pytest, flake8 and httpx are in the `dev` group, and `uv.lock` / `requirements.txt` pin the tested versions
+  - README example images moved to `docs/images/`; `posters/` and `cache/` are git-ignored
 - Updated `.gitignore` with poster outputs, Python build artifacts, IDE files, and OS-specific files
 
 ---

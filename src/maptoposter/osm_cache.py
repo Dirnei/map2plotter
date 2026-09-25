@@ -17,6 +17,8 @@ from pathlib import Path
 import osmnx as ox
 from shapely.geometry import box
 
+from . import paths
+
 
 class CacheError(Exception):
     """Raised when a cache operation fails."""
@@ -30,7 +32,7 @@ class NotCachedError(Exception):
     pass
 
 
-CACHE_DIR = Path(os.environ.get("CACHE_DIR", "cache"))
+CACHE_DIR = paths.CACHE_DIR
 CACHE_DIR.mkdir(exist_ok=True)
 
 # Smallest download radius in meters; larger ones grow in steps of 2^(1/4) (~19%)

@@ -11,8 +11,8 @@ import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 from PIL import Image  # noqa: E402
 
-import create_map_poster as cmp  # noqa: E402
-import osm_cache  # noqa: E402
+import maptoposter.poster as cmp  # noqa: E402
+from maptoposter import osm_cache  # noqa: E402
 
 LAT, LON = 48.0, 11.0
 THEME = {
@@ -226,7 +226,7 @@ def test_cache_only_coordinates(offline):
 
 
 def test_cache_only_main_exits_nonzero(offline, monkeypatch):
-    monkeypatch.setattr(cmp, "THEMES_DIR", "themes")
+    monkeypatch.setattr(cmp, "THEMES_DIR", cmp.paths.THEMES_DIR)
     code = exit_code(cmp.main, ["-c", "Lisbon", "-C", "Portugal", "--cache-only", "-o", str(offline / "x.png")])
     assert code == 1
 
@@ -282,7 +282,7 @@ def test_color_override_in_png(cli):
 
 # --- Size limits --------------------------------------------------------------------
 
-import poster_size  # noqa: E402
+from maptoposter import size as poster_size  # noqa: E402
 
 
 def test_oversized_png_rejected_with_suggested_dpi(cli, capsys):

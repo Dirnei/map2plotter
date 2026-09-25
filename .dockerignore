@@ -38,9 +38,14 @@ Thumbs.db
 test_posters/
 test_cache/
 
-# Old posters (keep structure but not old files)
-posters/old/
+# Generated posters and example images
 posters/
+docs/
+
+# Tests and planning
+test/
+openspec/
+.claude/
 
 # Documentation (not needed in container)
 *.md
