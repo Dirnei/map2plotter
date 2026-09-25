@@ -72,6 +72,12 @@ docker run --rm -p 127.0.0.1:8000:8000 -v $(pwd)/posters:/app/posters -v $(pwd)/
   ghcr.io/dirnei/map2plotter:latest
 ```
 
+`latest` is the newest release. To stay on one major version, use its tag instead, for example `ghcr.io/dirnei/map2plotter:1` (see [Releases](#releases)):
+
+```bash
+docker run --rm -p 127.0.0.1:8000:8000 -v $(pwd)/posters:/app/posters -v $(pwd)/cache:/app/cache   ghcr.io/dirnei/map2plotter:1
+```
+
 Run the CLI with docker:
 
 ```bash
@@ -444,6 +450,19 @@ map2plotter/
 ├── cache/                  # Map data, Google Fonts, web previews (git-ignored)
 └── README.md
 ```
+
+## Releases
+
+Releases are automated with [release-please](https://github.com/googleapis/release-please). Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/), and their type decides the next version:
+
+| Commit | Example | Next version |
+|--------|---------|--------------|
+| `fix:` | `fix: keep water outline inside the page` | patch (1.0.0 → 1.0.1) |
+| `feat:` | `feat: add a dotted fill mode` | minor (1.0.0 → 1.1.0) |
+| `feat!:` / `fix!:` / `refactor!:` | `feat!: drop the --dpi option` | major (1.0.0 → 2.0.0) |
+| `docs:`, `refactor:`, `test:`, `ci:`, `chore:` | `docs: explain pen widths` | no release on their own |
+
+On every push to `main`, release-please updates an open release pull request that bumps the version in `pyproject.toml` and adds the new entry to [CHANGELOG.md](CHANGELOG.md). Merging that pull request creates the tag `vX.Y.Z` and the GitHub release. It also publishes the Docker image `ghcr.io/dirnei/map2plotter` with the tags `X.Y.Z`, `X.Y`, `X` and `latest`. Pushes that do not merge the release pull request publish nothing.
 
 ## Hacker's Guide
 
