@@ -5,7 +5,7 @@ Web Interface
 A local web UI in two steps: load a location (downloading the map data once and
 rendering a quick preview), then customize the poster with live previews that are
 rendered from the cached data only, and export the final poster. Every render runs
-`python -m maptoposter` as a subprocess; its output is streamed to the page.
+`python -m map2plotter` as a subprocess; its output is streamed to the page.
 """
 
 import argparse
@@ -39,7 +39,7 @@ from . import size as poster_size
 POSTERS_DIR = paths.POSTERS_DIR
 THEMES_DIR = paths.THEMES_DIR
 STATIC_DIR = paths.STATIC_DIR
-CLI_COMMAND = [sys.executable, "-u", "-m", "maptoposter"]
+CLI_COMMAND = [sys.executable, "-u", "-m", "map2plotter"]
 WORK_DIR = paths.CACHE_DIR / "web"
 
 POSTER_TYPES = {".png": "image/png", ".svg": "image/svg+xml", ".pdf": "application/pdf"}
@@ -341,7 +341,7 @@ def preview_size(loc):
 
 def display_command(args):
     """The equivalent shell command line, for users to copy."""
-    return shlex.join(["maptoposter", *args])
+    return shlex.join(["map2plotter", *args])
 
 
 # ---------------------------------------------------------------------------
@@ -596,7 +596,7 @@ async def lifespan(_app):
         await cancel_job(CURRENT_JOB)
 
 
-app = FastAPI(title="Map Poster Generator", lifespan=lifespan)
+app = FastAPI(title="map2plotter", lifespan=lifespan)
 
 
 async def _json_body(request):
@@ -826,11 +826,11 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="maptoposter-web", description="Web interface for the map poster generator")
+    parser = argparse.ArgumentParser(prog="map2plotter-web", description="Web interface for map2plotter")
     parser.add_argument("--host", default="127.0.0.1", help="Address to bind (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8000, help="Port to listen on (default: 8000)")
     args = parser.parse_args()
-    print(f"Map Poster Generator web UI: http://{args.host}:{args.port}/", flush=True)
+    print(f"map2plotter web UI: http://{args.host}:{args.port}/", flush=True)
     uvicorn.run(app, host=args.host, port=args.port)
 
 

@@ -6,7 +6,8 @@ import requests
 from osmnx import _overpass
 from osmnx._errors import InsufficientResponseError, ResponseStatusCodeError
 
-import maptoposter.overpass as osrv
+import map2plotter
+import map2plotter.overpass as osrv
 
 A, B, C = "https://a.example/api", "https://b.example/api", "https://c.example/api"
 
@@ -159,3 +160,19 @@ def test_slot_status_only_for_overpass_api_de(monkeypatch):
     with pytest.raises(osrv.OverpassError):
         osrv.run(call, servers, log=lambda _: None)
     assert seen == {servers[0]: True, servers[1]: True, servers[2]: False}
+
+
+def test_user_agent_identifies_map2plotter():
+    assert map2plotter.USER_AGENT == f"map2plotter/{map2plotter.__version__} (+https://github.com/Dirnei/map2plotter)"
+
+
+def test_check_server_sends_user_agent(monkeypatch):
+    seen = {}
+
+    def fake_post(url, **kwargs):
+        seen.update(kwargs["headers"])
+        return _Response(200, {"elements": [{"type": "count"}]})
+
+    monkeypatch.setattr(osrv.requests, "post", fake_post)
+    osrv.check_server(A)
+    assert seen["User-Agent"] == map2plotter.USER_AGENT

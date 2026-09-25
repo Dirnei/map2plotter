@@ -3,7 +3,7 @@
 import pytest
 from shapely.geometry import box
 
-import maptoposter.edits as pe
+import map2plotter.edits as pe
 
 VALID = {
     "version": 1,

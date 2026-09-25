@@ -1,6 +1,8 @@
-# City Map Poster Generator
+# map2plotter
 
-Generate beautiful, minimalist map posters for any city in the world.
+Generate beautiful, minimalist map posters for any city in the world, as print posters (PNG, SVG, PDF) or as pen-plotter SVGs.
+
+> **Based on [maptoposter](https://github.com/originalankur/maptoposter)** by Ankur Gupta and its contributors, which is no longer maintained. map2plotter continues it under the same [MIT license](LICENSE), adding pen-plotter output and a web interface with a poster editor.
 
 <img src="docs/images/singapore_neon_cyberpunk_20260118_153328.png" width="250">
 <img src="docs/images/dubai_midnight_blue_20260118_140807.png" width="250">
@@ -25,12 +27,12 @@ Generate beautiful, minimalist map posters for any city in the world.
 
 ### With uv (Recommended)
 
-Make sure [uv](https://docs.astral.sh/uv/) is installed. In a clone of this repository, `uv sync` creates a virtual environment with the locked dependencies and installs the `maptoposter` package into it. `uv run` then starts its commands:
+Make sure [uv](https://docs.astral.sh/uv/) is installed. In a clone of this repository, `uv sync` creates a virtual environment with the locked dependencies and installs the `map2plotter` package into it. `uv run` then starts its commands:
 
 ```bash
 uv sync
-uv run maptoposter --city "Paris" --country "France"   # poster CLI
-uv run maptoposter-web                                 # web interface
+uv run map2plotter --city "Paris" --country "France"   # poster CLI
+uv run map2plotter-web                                 # web interface
 ```
 
 ### With pip + venv
@@ -40,10 +42,10 @@ python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 pip install -e .
-maptoposter --city "Paris" --country "France"
+map2plotter --city "Paris" --country "France"
 ```
 
-`python -m maptoposter` works the same as `maptoposter`. Posters are written to `posters/` and map data is cached in `cache/`, both in the current directory (set `CACHE_DIR` to use another cache directory).
+`python -m map2plotter` works the same as `map2plotter`. Posters are written to `posters/` and map data is cached in `cache/`, both in the current directory (set `CACHE_DIR` to use another cache directory).
 
 ### With Docker Compose (web interface)
 
@@ -52,12 +54,12 @@ docker compose up -d        # builds the image and serves http://localhost:8000/
 docker compose down         # stop
 ```
 
-Posters are saved to `./posters` and map data is cached in `./cache`. To use another host port, run `MAPTOPOSTER_PORT=9000 docker compose up -d`. To preselect an OpenStreetMap server, run e.g. `OVERPASS_URL=https://lz4.overpass-api.de/api docker compose up -d` (see [OpenStreetMap Servers](#openstreetmap-servers)). The compose file publishes the port on `127.0.0.1` only, because the web interface has no authentication.
+Posters are saved to `./posters` and map data is cached in `./cache`. To use another host port, run `MAP2PLOTTER_PORT=9000 docker compose up -d`. To preselect an OpenStreetMap server, run e.g. `OVERPASS_URL=https://lz4.overpass-api.de/api docker compose up -d` (see [OpenStreetMap Servers](#openstreetmap-servers)). The compose file publishes the port on `127.0.0.1` only, because the web interface has no authentication.
 
 To use the CLI with the same image and volumes:
 
 ```bash
-docker compose run --rm maptoposter --city "Paris" --country "France"
+docker compose run --rm map2plotter --city "Paris" --country "France"
 ```
 
 ### With Docker
@@ -67,7 +69,7 @@ With no arguments the container starts the web interface. With `--options` it ru
 ```bash
 # Web interface on http://localhost:8000/
 docker run --rm -p 127.0.0.1:8000:8000 -v $(pwd)/posters:/app/posters -v $(pwd)/cache:/app/cache \
-  ghcr.io/originalankur/maptoposter:latest
+  ghcr.io/dirnei/map2plotter:latest
 ```
 
 Run the CLI with docker:
@@ -75,24 +77,24 @@ Run the CLI with docker:
 ```bash
 # Basic usage
 docker run --rm -v $(pwd)/posters:/app/posters -v $(pwd)/cache:/app/cache \
-  ghcr.io/originalankur/maptoposter:latest --city "Paris" --country "France"
+  ghcr.io/dirnei/map2plotter:latest --city "Paris" --country "France"
 
 # With custom theme and distance
 docker run --rm -v $(pwd)/posters:/app/posters -v $(pwd)/cache:/app/cache \
-  ghcr.io/originalankur/maptoposter:latest --city "New York" --country "USA" --theme noir --distance 12000
+  ghcr.io/dirnei/map2plotter:latest --city "New York" --country "USA" --theme noir --distance 12000
 
 # With all options
 docker run --rm -v $(pwd)/posters:/app/posters -v $(pwd)/cache:/app/cache \
-  ghcr.io/originalankur/maptoposter:latest --city "Tokyo" --country "Japan" \
+  ghcr.io/dirnei/map2plotter:latest --city "Tokyo" --country "Japan" \
   --display-city "東京" --display-country "日本" \
   --font-family "Noto Sans JP" --theme japanese_ink --distance 15000
 
 # List available themes
-docker run --rm ghcr.io/originalankur/maptoposter:latest --list-themes
+docker run --rm ghcr.io/dirnei/map2plotter:latest --list-themes
 
 # Generate for all themes
 docker run --rm -v $(pwd)/posters:/app/posters -v $(pwd)/cache:/app/cache \
-  ghcr.io/originalankur/maptoposter:latest --city "Paris" --country "France" --all-themes
+  ghcr.io/dirnei/map2plotter:latest --city "Paris" --country "France" --all-themes
 ```
 
 **Note**: The `-v $(pwd)/posters:/app/posters` and `-v $(pwd)/cache:/app/cache` flags mount local directories so that generated posters and cached data persist on your host machine. 
@@ -107,12 +109,12 @@ docker run --rm -v $(pwd)/posters:/app/posters -v $(pwd)/cache:/app/cache \
 
 If you're using `uv`:
 ```bash
-uv run maptoposter --city <city> --country <country> [options]
+uv run map2plotter --city <city> --country <country> [options]
 ```
 
 Otherwise (pip + venv, with the environment activated):
 ```bash
-maptoposter --city <city> --country <country> [options]
+map2plotter --city <city> --country <country> [options]
 ```
 
 ### Web Interface
@@ -120,8 +122,8 @@ maptoposter --city <city> --country <country> [options]
 Rather than typing CLI flags, you can configure a poster in your browser:
 
 ```bash
-maptoposter-web              # then open http://127.0.0.1:8000/
-maptoposter-web --port 9000  # use another port
+map2plotter-web              # then open http://127.0.0.1:8000/
+map2plotter-web --port 9000  # use another port
 ```
 
 Prefix the commands with `uv run` if you use uv. The server uses `posters/` and `cache/` in the directory it is started from, like the CLI.
@@ -144,7 +146,7 @@ In the Customize step, you can edit the preview directly:
 
 Edits are stored in page millimetres and applied again on every re-render and export (see [Edit lists](#edit-lists)), so switching the theme, format or pen keeps them. Loading a different location or size clears them after a confirmation.
 
-The page also shows the exact `maptoposter` command of the last load or export, and lists everything in `posters/`. Previews are kept in `cache/web/` and do not appear there. One job runs at a time; a newer preview replaces one that is still rendering.
+The page also shows the exact `map2plotter` command of the last load or export, and lists everything in `posters/`. Previews are kept in `cache/web/` and do not appear there. One job runs at a time; a newer preview replaces one that is still rendering.
 
 With Docker, run `docker compose up -d` or start the container without arguments (see [With Docker Compose](#with-docker-compose-web-interface)).
 
@@ -211,13 +213,13 @@ How the poster is turned into pen paths:
 
 ```bash
 # A3 portrait poster for a 0.3 mm fineliner
-maptoposter -c "Venice" -C "Italy" -d 3000 --format plotter --width 297 --height 420 --pen-width 0.3
+map2plotter -c "Venice" -C "Italy" -d 3000 --format plotter --width 297 --height 420 --pen-width 0.3
 
 # Thicker pen with sparser hatching for faster plots
-maptoposter -c "Paris" -C "France" --format plotter --width 300 --height 400 --pen-width 0.5 --hatch-spacing 1.5
+map2plotter -c "Paris" -C "France" --format plotter --width 300 --height 400 --pen-width 0.5 --hatch-spacing 1.5
 
 # Outlined water with concentric fill, sparse parks
-maptoposter -c "Amsterdam" -C "Netherlands" -d 4000 -f plotter --water-outline --water-fill concentric --water-spacing 0.8 --parks-spacing 2
+map2plotter -c "Amsterdam" -C "Netherlands" -d 4000 -f plotter --water-outline --water-fill concentric --water-spacing 0.8 --parks-spacing 2
 ```
 
 **Tip:** paths are already sorted to keep pen-up travel short. To optimise further, post-process the file with [vpype](https://github.com/abey79/vpype), which keeps the layers:
@@ -259,13 +261,13 @@ Display city and country names in your language with custom fonts from google fo
 
 ```bash
 # Japanese
-maptoposter -c "Tokyo" -C "Japan" -dc "東京" -dC "日本" --font-family "Noto Sans JP"
+map2plotter -c "Tokyo" -C "Japan" -dc "東京" -dC "日本" --font-family "Noto Sans JP"
 
 # Korean
-maptoposter -c "Seoul" -C "South Korea" -dc "서울" -dC "대한민국" --font-family "Noto Sans KR"
+map2plotter -c "Seoul" -C "South Korea" -dc "서울" -dC "대한민국" --font-family "Noto Sans KR"
 
 # Arabic
-maptoposter -c "Dubai" -C "UAE" -dc "دبي" -dC "الإمارات" --font-family "Cairo"
+map2plotter -c "Dubai" -C "UAE" -dc "دبي" -dC "الإمارات" --font-family "Cairo"
 ```
 
 **Note**: Fonts are automatically downloaded from Google Fonts and cached locally in `cache/fonts/`.
@@ -290,10 +292,10 @@ PNG output is rendered at 300 DPI by default (`--dpi` changes it). Use these val
 #### Basic Examples
 ```bash
 # Simple usage with default theme
-maptoposter -c "Paris" -C "France"
+map2plotter -c "Paris" -C "France"
 
 # With custom theme and distance
-maptoposter -c "New York" -C "USA" -t noir -d 12000
+map2plotter -c "New York" -C "USA" -t noir -d 12000
 ```
 
 #### Multilingual Examples (Non-Latin Scripts)
@@ -302,61 +304,61 @@ Display city names in their native scripts:
 
 ```bash
 # Japanese
-maptoposter -c "Tokyo" -C "Japan" -dc "東京" -dC "日本" --font-family "Noto Sans JP" -t japanese_ink
+map2plotter -c "Tokyo" -C "Japan" -dc "東京" -dC "日本" --font-family "Noto Sans JP" -t japanese_ink
 
 # Korean
-maptoposter -c "Seoul" -C "South Korea" -dc "서울" -dC "대한민국" --font-family "Noto Sans KR" -t midnight_blue
+map2plotter -c "Seoul" -C "South Korea" -dc "서울" -dC "대한민국" --font-family "Noto Sans KR" -t midnight_blue
 
 # Thai
-maptoposter -c "Bangkok" -C "Thailand" -dc "กรุงเทพมหานคร" -dC "ประเทศไทย" --font-family "Noto Sans Thai" -t sunset
+map2plotter -c "Bangkok" -C "Thailand" -dc "กรุงเทพมหานคร" -dC "ประเทศไทย" --font-family "Noto Sans Thai" -t sunset
 
 # Arabic
-maptoposter -c "Dubai" -C "UAE" -dc "دبي" -dC "الإمارات" --font-family "Cairo" -t terracotta
+map2plotter -c "Dubai" -C "UAE" -dc "دبي" -dC "الإمارات" --font-family "Cairo" -t terracotta
 
 # Chinese (Simplified)
-maptoposter -c "Beijing" -C "China" -dc "北京" -dC "中国" --font-family "Noto Sans SC"
+map2plotter -c "Beijing" -C "China" -dc "北京" -dC "中国" --font-family "Noto Sans SC"
 
 # Khmer
-maptoposter -c "Phnom Penh" -C "Cambodia" -dc "ភ្នំពេញ" -dC "កម្ពុជា" --font-family "Noto Sans Khmer"
+map2plotter -c "Phnom Penh" -C "Cambodia" -dc "ភ្នំពេញ" -dC "កម្ពុជា" --font-family "Noto Sans Khmer"
 ```
 
 #### Advanced Examples
 ```bash
 # Iconic grid patterns
-maptoposter -c "New York" -C "USA" -t noir -d 12000           # Manhattan grid
-maptoposter -c "Barcelona" -C "Spain" -t warm_beige -d 8000   # Eixample district
+map2plotter -c "New York" -C "USA" -t noir -d 12000           # Manhattan grid
+map2plotter -c "Barcelona" -C "Spain" -t warm_beige -d 8000   # Eixample district
 
 # Waterfront & canals
-maptoposter -c "Venice" -C "Italy" -t blueprint -d 4000       # Canal network
-maptoposter -c "Amsterdam" -C "Netherlands" -t ocean -d 6000  # Concentric canals
-maptoposter -c "Dubai" -C "UAE" -t midnight_blue -d 15000     # Palm & coastline
+map2plotter -c "Venice" -C "Italy" -t blueprint -d 4000       # Canal network
+map2plotter -c "Amsterdam" -C "Netherlands" -t ocean -d 6000  # Concentric canals
+map2plotter -c "Dubai" -C "UAE" -t midnight_blue -d 15000     # Palm & coastline
 
 # Radial patterns
-maptoposter -c "Paris" -C "France" -t pastel_dream -d 10000   # Haussmann boulevards
-maptoposter -c "Moscow" -C "Russia" -t noir -d 12000          # Ring roads
+map2plotter -c "Paris" -C "France" -t pastel_dream -d 10000   # Haussmann boulevards
+map2plotter -c "Moscow" -C "Russia" -t noir -d 12000          # Ring roads
 
 # Organic old cities
-maptoposter -c "Tokyo" -C "Japan" -t japanese_ink -d 15000    # Dense organic streets
-maptoposter -c "Marrakech" -C "Morocco" -t terracotta -d 5000 # Medina maze
-maptoposter -c "Rome" -C "Italy" -t warm_beige -d 8000        # Ancient layout
+map2plotter -c "Tokyo" -C "Japan" -t japanese_ink -d 15000    # Dense organic streets
+map2plotter -c "Marrakech" -C "Morocco" -t terracotta -d 5000 # Medina maze
+map2plotter -c "Rome" -C "Italy" -t warm_beige -d 8000        # Ancient layout
 
 # Coastal cities
-maptoposter -c "San Francisco" -C "USA" -t sunset -d 10000    # Peninsula grid
-maptoposter -c "Sydney" -C "Australia" -t ocean -d 12000      # Harbor city
-maptoposter -c "Mumbai" -C "India" -t contrast_zones -d 18000 # Coastal peninsula
+map2plotter -c "San Francisco" -C "USA" -t sunset -d 10000    # Peninsula grid
+map2plotter -c "Sydney" -C "Australia" -t ocean -d 12000      # Harbor city
+map2plotter -c "Mumbai" -C "India" -t contrast_zones -d 18000 # Coastal peninsula
 
 # River cities
-maptoposter -c "London" -C "UK" -t noir -d 15000              # Thames curves
-maptoposter -c "Budapest" -C "Hungary" -t copper_patina -d 8000  # Danube split
+map2plotter -c "London" -C "UK" -t noir -d 15000              # Thames curves
+map2plotter -c "Budapest" -C "Hungary" -t copper_patina -d 8000  # Danube split
 
 # Override center coordinates
-maptoposter --city "New York" --country "USA" -lat 40.776676 -long -73.971321 -t noir
+map2plotter --city "New York" --country "USA" -lat 40.776676 -long -73.971321 -t noir
 
 # List available themes
-maptoposter --list-themes
+map2plotter --list-themes
 
 # Generate posters for every theme
-maptoposter -c "Tokyo" -C "Japan" --all-themes
+map2plotter -c "Tokyo" -C "Japan" --all-themes
 ```
 
 ### Distance Guide
@@ -369,7 +371,7 @@ maptoposter -c "Tokyo" -C "Japan" --all-themes
 
 ## Themes
 
-17 themes available in `src/maptoposter/data/themes/`:
+17 themes available in `src/map2plotter/data/themes/`:
 
 | Theme | Style |
 |-------|-------|
@@ -400,7 +402,7 @@ Posters are saved to `posters/` directory with format:
 
 ## Adding Custom Themes
 
-Create a JSON file in `src/maptoposter/data/themes/` (then run `uv sync` or `pip install -e .` again if you use a non-editable install):
+Create a JSON file in `src/map2plotter/data/themes/` (then run `uv sync` or `pip install -e .` again if you use a non-editable install):
 
 ```json
 {
@@ -423,10 +425,10 @@ Create a JSON file in `src/maptoposter/data/themes/` (then run `uv sync` or `pip
 ## Project Structure
 
 ```
-maptoposter/
-├── src/maptoposter/
-│   ├── poster.py           # Rendering and the maptoposter CLI
-│   ├── web.py              # Web interface (maptoposter-web)
+map2plotter/
+├── src/map2plotter/
+│   ├── poster.py           # Rendering and the map2plotter CLI
+│   ├── web.py              # Web interface (map2plotter-web)
 │   ├── fonts.py            # Font loading and Google Fonts integration
 │   ├── osm_cache.py        # Map data cache
 │   ├── overpass.py         # OpenStreetMap (Overpass) servers and fallback

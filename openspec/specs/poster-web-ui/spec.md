@@ -7,18 +7,22 @@ Provide a local web interface where users configure every poster option in a for
 ## Requirements
 
 ### Requirement: Start the web server
-The project SHALL provide a web server started with the `maptoposter-web` command. By default it SHALL listen on `127.0.0.1:8000`. It SHALL accept `--host` and `--port` options. When started, it SHALL print the URL it serves.
+The project SHALL provide a web server started with the `map2plotter-web` command. By default it SHALL listen on `127.0.0.1:8000`. It SHALL accept `--host` and `--port` options. When started, it SHALL print the URL it serves. The page title and heading SHALL show the project name map2plotter.
 
 #### Scenario: Default start
-- **WHEN** the user runs `maptoposter-web`
+- **WHEN** the user runs `map2plotter-web`
 - **THEN** the page is reachable at `http://127.0.0.1:8000/` and is not reachable from other machines
 
 #### Scenario: Custom bind address
-- **WHEN** the user runs `maptoposter-web --host 0.0.0.0 --port 9000`
+- **WHEN** the user runs `map2plotter-web --host 0.0.0.0 --port 9000`
 - **THEN** the page is served on port 9000 on all interfaces
 
+#### Scenario: Project name on the page
+- **WHEN** the user opens the page
+- **THEN** the browser tab title and the page heading show map2plotter
+
 ### Requirement: Configuration form covers all CLI options
-The page SHALL provide inputs for every poster option of `create_map_poster.py`, split across the two steps.
+The page SHALL provide inputs for every poster option of the `map2plotter` CLI, split across the two steps.
 
 **Location**:
 - workflow: print poster or pen plotter
@@ -91,16 +95,16 @@ Customize previews and exports SHALL be rejected when no location has been loade
 - **THEN** the server responds with a validation error on the dpi field naming the highest dpi that fits, and no process is started
 
 ### Requirement: Invoke the existing CLI
-Every load, preview and export SHALL run the poster CLI as a separate process, as `python -m maptoposter` using the same Python interpreter as the server. The server SHALL pass the configuration as a command-line argument list, never through a shell. Options left empty SHALL be omitted, so the CLI defaults apply.
+Every load, preview and export SHALL run the poster CLI as a separate process, as `python -m map2plotter` using the same Python interpreter as the server. The server SHALL pass the configuration as a command-line argument list, never through a shell. Options left empty SHALL be omitted, so the CLI defaults apply.
 - Previews and exports SHALL pass `--cache-only`.
 - Loads and previews SHALL pass `--output` pointing to the preview file, and PNG previews a reduced `--dpi`.
 - When the edit list is not empty, it SHALL be written to a file in the working directory and passed with `--edits`.
 
-The CLI process SHALL use the same posters and cache directories as the server. The page SHALL display the equivalent command line of the last export or load, starting with `maptoposter`, so the user can copy it.
+The CLI process SHALL use the same posters and cache directories as the server. The page SHALL display the equivalent command line of the last export or load, starting with `map2plotter`, so the user can copy it.
 
 #### Scenario: Command built from form
 - **WHEN** the user has loaded Paris, France and exports with theme "noir", distance 10000 and format "svg"
-- **THEN** the process runs with the arguments `--city Paris --country France --theme noir --distance 10000 --format svg --cache-only`, plus `--width`/`--height` in mm, and the page shows that command starting with `maptoposter`
+- **THEN** the process runs with the arguments `--city Paris --country France --theme noir --distance 10000 --format svg --cache-only`, plus `--width`/`--height` in mm, and the page shows that command starting with `map2plotter`
 
 #### Scenario: Plotter fill options passed
 - **WHEN** the user exports a plotter poster with water fill `concentric`, water spacing 1 and the water outline on
@@ -171,7 +175,7 @@ The page SHALL list the poster files in `posters/` (PNG, SVG and PDF), newest fi
 The server SHALL serve files only from the `posters/` directory. It SHALL reject file requests whose name resolves outside that directory, or whose extension is not `png`, `svg` or `pdf`.
 
 #### Scenario: Path traversal rejected
-- **WHEN** a client requests the poster file `../create_map_poster.py`
+- **WHEN** a client requests the poster file `../pyproject.toml`
 - **THEN** the server responds with an error (not found or bad request) and does not return the file
 
 ### Requirement: Container hosts the web interface

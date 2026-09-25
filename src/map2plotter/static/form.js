@@ -1,6 +1,6 @@
 // Shared helpers: form values, per-viewer storage, field errors, log view, poster cards.
 
-const STORAGE_KEY = "maptoposter-form-v3";  // v3: two-step form
+const STORAGE_KEY = "map2plotter-form-v1";
 const NUMBER_FIELDS = [
   "distance", "width", "height", "pen_width", "hatch_spacing", "water_spacing", "parks_spacing", "dpi",
 ];

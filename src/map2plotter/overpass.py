@@ -11,6 +11,8 @@ from urllib.parse import urlparse
 
 import requests
 
+from . import USER_AGENT
+
 AUTO = "auto"
 
 # Public servers in fallback order: (base URL, label)
@@ -28,7 +30,6 @@ MAX_ATTEMPTS = 3  # attempts per request when a server answers 429/504 (OSMnx wo
 
 # Tiny query (a node count in a ~100 m box) to test whether a server answers
 CHECK_QUERY = "[out:json][timeout:10];node(47.735,12.459,47.736,12.460);out count;"
-USER_AGENT = "maptoposter (https://github.com/originalankur/maptoposter)"
 
 
 class OverpassError(RuntimeError):

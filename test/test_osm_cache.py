@@ -5,7 +5,7 @@ import networkx as nx
 import pytest
 from shapely.geometry import Point
 
-from maptoposter import osm_cache
+from map2plotter import osm_cache
 
 CENTER = (47.0, 12.0)
 

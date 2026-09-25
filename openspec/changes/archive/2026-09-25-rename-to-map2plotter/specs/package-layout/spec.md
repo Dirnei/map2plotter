@@ -1,10 +1,6 @@
-# package-layout Specification
+# Spec Delta
 
-## Purpose
-
-Defines how the map poster generator is started as a Python package, and makes sure its built-in data is found no matter which directory it is run from.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Package commands
 The project SHALL be a Python package named `map2plotter` that provides two commands once the project is installed into an environment, for example with `uv sync`:

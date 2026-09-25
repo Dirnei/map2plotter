@@ -11,8 +11,8 @@ import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 from PIL import Image  # noqa: E402
 
-import maptoposter.poster as cmp  # noqa: E402
-from maptoposter import osm_cache  # noqa: E402
+import map2plotter.poster as cmp  # noqa: E402
+from map2plotter import osm_cache  # noqa: E402
 
 LAT, LON = 48.0, 11.0
 THEME = {
@@ -218,6 +218,26 @@ def test_cache_only_missing_water_warns(offline, capsys):
     assert "water" in capsys.readouterr().out
 
 
+def test_downloads_and_geocoding_identify_map2plotter(tmp_path, monkeypatch):
+    monkeypatch.setattr(osm_cache, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(cmp, "CACHE_ONLY", False)
+    monkeypatch.setattr(cmp.time, "sleep", lambda s: None)
+    agents = []
+
+    class FakeNominatim:
+        def __init__(self, user_agent, timeout):
+            agents.append(user_agent)
+
+        def geocode(self, query):
+            return type("Location", (), {"latitude": 38.7, "longitude": -9.1, "address": query})()
+
+    monkeypatch.setattr(cmp, "Nominatim", FakeNominatim)
+    assert cmp.get_coordinates("Lisbon", "Portugal") == (38.7, -9.1)
+    assert agents == [cmp.USER_AGENT]
+    assert cmp.ox.settings.http_user_agent == cmp.USER_AGENT
+    assert "city_map_poster" not in cmp.USER_AGENT and "originalankur" not in cmp.USER_AGENT
+
+
 def test_cache_only_coordinates(offline):
     with pytest.raises(osm_cache.NotCachedError):
         cmp.get_coordinates("Lisbon", "Portugal")
@@ -282,7 +302,7 @@ def test_color_override_in_png(cli):
 
 # --- Size limits --------------------------------------------------------------------
 
-from maptoposter import size as poster_size  # noqa: E402
+from map2plotter import size as poster_size  # noqa: E402
 
 
 def test_oversized_png_rejected_with_suggested_dpi(cli, capsys):

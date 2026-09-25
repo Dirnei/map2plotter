@@ -508,7 +508,7 @@ wheels = [
 ]
 
 [[package]]
-name = "maptoposter"
+name = "map2plotter"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [

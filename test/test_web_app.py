@@ -9,7 +9,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from maptoposter import web
+from map2plotter import web
 
 THEME = {"name": "Noir", "description": "Dark", "bg": "#000000", "text": "#FFFFFF"}
 PARIS = {"city": "Paris", "country": "France"}
@@ -230,7 +230,7 @@ def test_export_args_basic():
         "--city", "Paris", "--country", "France", "--distance", "10000", "--width", "300", "--height", "400",
         "--overpass-url", "auto", "--theme", "noir", "--format", "svg",
     ]
-    assert web.display_command(args).startswith("maptoposter --city Paris")
+    assert web.display_command(args).startswith("map2plotter --city Paris")
 
 
 def test_args_plotter_and_optional_fields():
@@ -526,3 +526,11 @@ def test_export_passes_only_changed_colors(env):
     args = web.CURRENT_JOB.args
     assert [args[i + 1] for i, a in enumerate(args) if a == "--color"] == ["water=#1f5fa8"]
     assert "--color 'water=#1f5fa8'" in job["command"]
+
+
+def test_page_credits_original_project(env):
+    client, _, _ = env
+    html = client.get("/").text
+    assert "<title>map2plotter</title>" in html
+    assert 'href="https://github.com/originalankur/maptoposter"' in html
+    assert 'href="https://github.com/Dirnei/map2plotter"' in html

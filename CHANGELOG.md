@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Text scaling for landscape orientations** - Font size now scales based on `min(height, width)` instead of just width (fixes [#112](https://github.com/originalankur/maptoposter/issues/112))
 
 ### Changed
+- **BREAKING: renamed to map2plotter**, published as its own project at https://github.com/Dirnei/map2plotter. It continues [maptoposter](https://github.com/originalankur/maptoposter) by Ankur Gupta, which is no longer maintained. The old names are taken on PyPI by other copies of the project.
+  - Commands: `maptoposter` → `map2plotter`, `maptoposter-web` → `map2plotter-web`, `python -m maptoposter` → `python -m map2plotter`; the Python package is `map2plotter`
+  - Docker Compose: service and image `maptoposter` → `map2plotter`, `MAPTOPOSTER_PORT` → `MAP2PLOTTER_PORT`; image `ghcr.io/dirnei/map2plotter`
+  - Requests to Overpass and Nominatim identify as `map2plotter/<version> (+https://github.com/Dirnei/map2plotter)`
+  - `LICENSE` keeps Ankur Gupta's copyright and adds Christian Dirnhofer's; the README and the web interface link to the original project
+  - The web interface's saved form and pens are reset once
 - **BREAKING: package layout and commands**: the code is now the `maptoposter` package in `src/maptoposter/`
   - `maptoposter` replaces `python create_map_poster.py` and `maptoposter-web` replaces `python web_app.py`; `python -m maptoposter` also works (in a clone: `uv sync`, then `uv run maptoposter`)
   - Themes, the Roboto fonts and the web files are bundled in the package and found from any working directory; custom themes go in `src/maptoposter/data/themes/`

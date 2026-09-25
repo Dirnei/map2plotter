@@ -1,12 +1,16 @@
 [project]
-name = "maptoposter"
+name = "map2plotter"
 version = "0.2.0"
 description = "Generate beautiful, minimalist map posters for any city in the world."
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     {name = "Ankur Gupta", email = "originalankur@github.com"}
+]
+maintainers = [
+    {name = "Christian Dirnhofer"}
 ]
 keywords = ["map", "poster", "osm", "openstreetmap", "art", "visualization"]
 
@@ -28,9 +32,15 @@ dependencies = [
     "uvicorn>=0.53,<1",
 ]
 
+[project.urls]
+Homepage = "https://github.com/Dirnei/map2plotter"
+Source = "https://github.com/Dirnei/map2plotter"
+Issues = "https://github.com/Dirnei/map2plotter/issues"
+"Original project" = "https://github.com/originalankur/maptoposter"
+
 [project.scripts]
-maptoposter = "maptoposter.poster:main"
-maptoposter-web = "maptoposter.web:main"
+map2plotter = "map2plotter.poster:main"
+map2plotter-web = "map2plotter.web:main"
 
 [dependency-groups]
 dev = [
@@ -40,14 +50,14 @@ dev = [
 ]
 
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-maptoposter = ["data/**/*", "static/*"]
+map2plotter = ["data/**/*", "static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]

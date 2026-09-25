@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-City Map Poster Generator
+map2plotter
 
 This module generates beautiful, minimalist map posters for any city in the world.
 It fetches OpenStreetMap data using OSMnx, applies customizable themes, and creates
@@ -32,6 +32,7 @@ from shapely.geometry import Point
 from shapely.geometry.polygon import orient
 from tqdm import tqdm
 
+from . import USER_AGENT
 from . import edits as poster_edits
 from . import osm_cache, overpass, paths, plotter
 from . import size as poster_size
@@ -39,6 +40,9 @@ from .colors import THEME_COLOR_KEYS, parse_color_overrides
 from .fonts import load_fonts
 from .osm_cache import CacheError, NotCachedError, cache_get, cache_set
 
+
+# Identify map2plotter to Overpass (OSMnx downloads) and Nominatim (geocoding)
+ox.settings.http_user_agent = USER_AGENT
 
 # OpenStreetMap server: 'auto' (health check + fallback) or an Overpass API base URL
 OVERPASS_CHOICE = overpass.AUTO
@@ -289,7 +293,7 @@ def get_coordinates(city, country):
         )
 
     print("Looking up coordinates...")
-    geolocator = Nominatim(user_agent="city_map_poster", timeout=10)
+    geolocator = Nominatim(user_agent=USER_AGENT, timeout=10)
 
     # Add a small delay to respect Nominatim's usage policy
     time.sleep(1)
@@ -871,51 +875,51 @@ def create_poster(
 def print_examples():
     """Print usage examples."""
     print("""
-City Map Poster Generator
-=========================
+map2plotter
+===========
 
 Usage:
-  maptoposter --city <city> --country <country> [options]
+  map2plotter --city <city> --country <country> [options]
 
 Examples:
   # Iconic grid patterns
-  maptoposter -c "New York" -C "USA" -t noir -d 12000           # Manhattan grid
-  maptoposter -c "Barcelona" -C "Spain" -t warm_beige -d 8000   # Eixample district grid
+  map2plotter -c "New York" -C "USA" -t noir -d 12000           # Manhattan grid
+  map2plotter -c "Barcelona" -C "Spain" -t warm_beige -d 8000   # Eixample district grid
 
   # Waterfront & canals
-  maptoposter -c "Venice" -C "Italy" -t blueprint -d 4000       # Canal network
-  maptoposter -c "Amsterdam" -C "Netherlands" -t ocean -d 6000  # Concentric canals
-  maptoposter -c "Dubai" -C "UAE" -t midnight_blue -d 15000     # Palm & coastline
+  map2plotter -c "Venice" -C "Italy" -t blueprint -d 4000       # Canal network
+  map2plotter -c "Amsterdam" -C "Netherlands" -t ocean -d 6000  # Concentric canals
+  map2plotter -c "Dubai" -C "UAE" -t midnight_blue -d 15000     # Palm & coastline
 
   # Radial patterns
-  maptoposter -c "Paris" -C "France" -t pastel_dream -d 10000   # Haussmann boulevards
-  maptoposter -c "Moscow" -C "Russia" -t noir -d 12000          # Ring roads
+  map2plotter -c "Paris" -C "France" -t pastel_dream -d 10000   # Haussmann boulevards
+  map2plotter -c "Moscow" -C "Russia" -t noir -d 12000          # Ring roads
 
   # Organic old cities
-  maptoposter -c "Tokyo" -C "Japan" -t japanese_ink -d 15000    # Dense organic streets
-  maptoposter -c "Marrakech" -C "Morocco" -t terracotta -d 5000 # Medina maze
-  maptoposter -c "Rome" -C "Italy" -t warm_beige -d 8000        # Ancient street layout
+  map2plotter -c "Tokyo" -C "Japan" -t japanese_ink -d 15000    # Dense organic streets
+  map2plotter -c "Marrakech" -C "Morocco" -t terracotta -d 5000 # Medina maze
+  map2plotter -c "Rome" -C "Italy" -t warm_beige -d 8000        # Ancient street layout
 
   # Coastal cities
-  maptoposter -c "San Francisco" -C "USA" -t sunset -d 10000    # Peninsula grid
-  maptoposter -c "Sydney" -C "Australia" -t ocean -d 12000      # Harbor city
-  maptoposter -c "Mumbai" -C "India" -t contrast_zones -d 18000 # Coastal peninsula
+  map2plotter -c "San Francisco" -C "USA" -t sunset -d 10000    # Peninsula grid
+  map2plotter -c "Sydney" -C "Australia" -t ocean -d 12000      # Harbor city
+  map2plotter -c "Mumbai" -C "India" -t contrast_zones -d 18000 # Coastal peninsula
 
   # River cities
-  maptoposter -c "London" -C "UK" -t noir -d 15000              # Thames curves
-  maptoposter -c "Budapest" -C "Hungary" -t copper_patina -d 8000  # Danube split
+  map2plotter -c "London" -C "UK" -t noir -d 15000              # Thames curves
+  map2plotter -c "Budapest" -C "Hungary" -t copper_patina -d 8000  # Danube split
 
   # Pen plotter SVG (A3, 0.3 mm pen)
-  maptoposter -c "Venice" -C "Italy" -d 3000 -f plotter -W 297 -H 420
+  map2plotter -c "Venice" -C "Italy" -d 3000 -f plotter -W 297 -H 420
 
   # Plotter SVG with outlined, concentric water
-  maptoposter -c "Venice" -C "Italy" -d 3000 -f plotter --water-outline --water-fill concentric
+  map2plotter -c "Venice" -C "Italy" -d 3000 -f plotter --water-outline --water-fill concentric
 
   # Quick low-resolution preview from cached data only
-  maptoposter -c "Venice" -C "Italy" -d 3000 --cache-only --dpi 60 -o preview.png
+  map2plotter -c "Venice" -C "Italy" -d 3000 --cache-only --dpi 60 -o preview.png
 
   # List themes
-  maptoposter --list-themes
+  map2plotter --list-themes
 
 Options:
   --city, -c        City name (required)
@@ -981,17 +985,17 @@ def list_themes():
 def build_parser():
     """The command-line interface."""
     parser = argparse.ArgumentParser(
-        prog="maptoposter",
+        prog="map2plotter",
         description="Generate beautiful map posters for any city",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  maptoposter --city "New York" --country "USA"
-  maptoposter --city "New York" --country "USA" -l 40.776676 -73.971321 --theme neon_cyberpunk
-  maptoposter --city Tokyo --country Japan --theme midnight_blue
-  maptoposter --city Paris --country France --theme noir --distance 15000
-  maptoposter --city Venice --country Italy --format plotter --width 297 --height 420
-  maptoposter --list-themes
+  map2plotter --city "New York" --country "USA"
+  map2plotter --city "New York" --country "USA" -l 40.776676 -73.971321 --theme neon_cyberpunk
+  map2plotter --city Tokyo --country Japan --theme midnight_blue
+  map2plotter --city Paris --country France --theme noir --distance 15000
+  map2plotter --city Venice --country Italy --format plotter --width 297 --height 420
+  map2plotter --list-themes
         """,
     )
 
@@ -1269,7 +1273,7 @@ def main(argv=None):
         themes_to_generate = [args.theme]
 
     print("=" * 50)
-    print("City Map Poster Generator")
+    print("map2plotter")
     print("=" * 50)
 
     # Load custom fonts if specified

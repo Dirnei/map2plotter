@@ -1,22 +1,22 @@
-# Map Poster Generator: web interface at http://localhost:8000/
+# map2plotter: web interface at http://localhost:8000/
 #
 #   docker compose up -d                  # build (first time) and start
 #   docker compose logs -f                # follow logs
 #   docker compose down                   # stop
 #
 # Run the CLI with the same image and volumes:
-#   docker compose run --rm maptoposter --city Paris --country France
+#   docker compose run --rm map2plotter --city Paris --country France
 #
-# Set MAPTOPOSTER_PORT to use another host port, e.g. MAPTOPOSTER_PORT=9000 docker compose up -d
+# Set MAP2PLOTTER_PORT to use another host port, e.g. MAP2PLOTTER_PORT=9000 docker compose up -d
 
 services:
-  maptoposter:
+  map2plotter:
     build: .
-    image: maptoposter:latest
+    image: map2plotter:latest
     ports:
       # Bound to localhost only: the web interface has no authentication.
-      # Change to "${MAPTOPOSTER_PORT:-8000}:8000" to expose it on your network (trusted networks only).
-      - "127.0.0.1:${MAPTOPOSTER_PORT:-8001}:8000"
+      # Change to "${MAP2PLOTTER_PORT:-8000}:8000" to expose it on your network (trusted networks only).
+      - "127.0.0.1:${MAP2PLOTTER_PORT:-8001}:8000"
     volumes:
       - ./posters:/app/posters
       - ./cache:/app/cache

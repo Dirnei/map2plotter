@@ -25,7 +25,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install the package (dependencies come from requirements.txt)
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md LICENSE ./
 COPY src/ src/
 RUN pip install --no-cache-dir --no-deps .
 

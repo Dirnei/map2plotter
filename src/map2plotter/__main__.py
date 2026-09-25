@@ -1,4 +1,4 @@
-"""python -m maptoposter: same as the maptoposter command."""
+"""python -m map2plotter: same as the map2plotter command."""
 
 from .poster import main
 

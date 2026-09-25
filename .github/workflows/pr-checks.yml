@@ -34,10 +34,10 @@ jobs:
           pip install flake8 pytest httpx
 
       - name: Test CLI help
-        run: maptoposter --help
+        run: map2plotter --help
 
       - name: Test list themes
-        run: maptoposter --list-themes
+        run: map2plotter --list-themes
 
       - name: Lint with flake8
         run: flake8 src test

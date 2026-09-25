@@ -10,7 +10,7 @@ Produce a map poster as a pen-plotter-ready SVG in which every mark is a stroked
 The CLI SHALL accept `plotter` as a value of `--format`. When it is selected, the tool SHALL write a single `.svg` file to the `posters/` directory. The filename SHALL follow the existing `<city>_<theme>_<timestamp>` pattern with a `.svg` extension. The existing `png`, `svg` and `pdf` formats SHALL behave as before.
 
 #### Scenario: Plotter format writes an SVG file
-- **WHEN** the user runs `create_map_poster.py -c Paris -C France --format plotter`
+- **WHEN** the user runs `map2plotter -c Paris -C France --format plotter`
 - **THEN** a file ending in `.svg` is written to `posters/` and the command exits successfully
 
 #### Scenario: Existing formats unchanged

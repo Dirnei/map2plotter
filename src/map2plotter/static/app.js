@@ -1,4 +1,4 @@
-// Map Poster Generator web UI: step 1 picks the workflow (print poster or pen plotter) and
+// map2plotter web UI: step 1 picks the workflow (print poster or pen plotter) and
 // loads a location (downloading the map data once); step 2 customizes it with live previews
 // rendered from the cached data, then exports.
 
@@ -45,7 +45,7 @@ const MAX_PNG_PIXELS = 200_000_000;
 const MAX_PNG_SIDE = 65_535;
 const LARGE_PNG_PIXELS = 100_000_000;
 const MODE_NAMES = { print: "Print poster", plotter: "Pen plotter" };
-const PENS_KEY = "maptoposter-pens-v1";
+const PENS_KEY = "map2plotter-pens-v1";
 const PEN_ELEMENTS = [...LAYERS, ["text", "Text"]];
 const themeColors = new Map();  // theme id -> {key: colour}
 

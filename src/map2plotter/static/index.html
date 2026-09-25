@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Map Poster Generator</title>
+  <title>map2plotter</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <header>
-    <h1>Map Poster Generator</h1>
+    <h1>map2plotter</h1>
     <p>Load a location, customize the poster on a live preview, then export it.</p>
     <ol class="steps" aria-label="Steps">
       <li><button type="button" class="step" data-step="location" aria-current="step">1 · Location</button></li>
@@ -251,6 +251,14 @@
       <p id="history-empty" class="hint" hidden>No posters yet.</p>
     </section>
   </main>
+
+  <footer>
+    <p>
+      <a href="https://github.com/Dirnei/map2plotter">map2plotter</a>
+      is based on <a href="https://github.com/originalankur/maptoposter">maptoposter</a> by Ankur Gupta
+      (MIT license). Map data © OpenStreetMap contributors.
+    </p>
+  </footer>
 
   <script type="module" src="/static/app.js"></script>
 </body>
