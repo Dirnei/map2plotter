@@ -1,8 +1,8 @@
 // Shared helpers: form values, per-viewer storage, field errors, log view, poster cards.
 
-const STORAGE_KEY = "map2plotter-form-v1";
+const STORAGE_KEY = "map2plotter-form-v2";  // v2: plotter-only form
 const NUMBER_FIELDS = [
-  "distance", "width", "height", "pen_width", "hatch_spacing", "water_spacing", "parks_spacing", "dpi",
+  "distance", "width", "height", "pen_width", "hatch_spacing", "water_spacing", "parks_spacing",
 ];
 
 // --- Storage (per-viewer convenience only) ---------------------------------
@@ -124,16 +124,11 @@ export function posterCard(poster) {
   preview.href = url;
   preview.target = "_blank";
   preview.rel = "noopener";
-  if (/\.(png|svg)$/i.test(poster.name)) {
-    const img = document.createElement("img");
-    img.src = url;
-    img.alt = poster.name;
-    img.loading = "lazy";
-    preview.append(img);
-  } else {
-    preview.classList.add("doc");
-    preview.textContent = "Open PDF";
-  }
+  const img = document.createElement("img");
+  img.src = url;
+  img.alt = poster.name;
+  img.loading = "lazy";
+  preview.append(img);
 
   const name = document.createElement("div");
   name.className = "name";

@@ -1,9 +1,7 @@
 {
   "name": "Copper Patina",
   "description": "Oxidized copper aesthetic - teal-green patina with copper accents",
-  "bg": "#E8F0F0",
   "text": "#2A5A5A",
-  "gradient_color": "#E8F0F0",
   "water": "#C0D8D8",
   "parks": "#D8E8E0",
   "road_motorway": "#B87333",

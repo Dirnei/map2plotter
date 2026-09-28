@@ -1,6 +1,6 @@
 [project]
 name = "map2plotter"
-version = "0.2.0"
+version = "0.3.0"
 description = "Generate beautiful, minimalist map posters for any city in the world."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -20,7 +20,6 @@ dependencies = [
     "geopy>=2.4,<3",
     "Hershey-Fonts>=2.1,<3",
     "lat-lon-parser>=1.3,<2",
-    "matplotlib>=3.10,<4",
     "networkx>=3.6,<4",
     "numpy>=2.4,<3",
     "osmnx>=2.0.7,<3",

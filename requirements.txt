@@ -17,14 +17,8 @@ click==8.5.0
     # via uvicorn
 colorama==0.4.6 ; sys_platform == 'win32'
     # via tqdm
-contourpy==1.3.3
-    # via matplotlib
-cycler==0.12.1
-    # via matplotlib
 fastapi==0.141.1
     # via map2plotter
-fonttools==4.61.1
-    # via matplotlib
 geographiclib==2.1
     # via geopy
 geopandas==1.1.2
@@ -41,11 +35,7 @@ idna==3.11
     # via
     #   anyio
     #   requests
-kiwisolver==1.4.9
-    # via matplotlib
 lat-lon-parser==1.3.1
-    # via map2plotter
-matplotlib==3.10.8
     # via map2plotter
 networkx==3.6.1
     # via
@@ -53,10 +43,8 @@ networkx==3.6.1
     #   osmnx
 numpy==2.4.0
     # via
-    #   contourpy
     #   geopandas
     #   map2plotter
-    #   matplotlib
     #   osmnx
     #   pandas
     #   pyogrio
@@ -67,14 +55,11 @@ osmnx==2.0.7
 packaging==25.0
     # via
     #   geopandas
-    #   matplotlib
     #   pyogrio
 pandas==2.3.3
     # via
     #   geopandas
     #   osmnx
-pillow==12.1.0
-    # via matplotlib
 pydantic==2.13.5
     # via
     #   fastapi
@@ -83,14 +68,10 @@ pydantic-core==2.46.5
     # via pydantic
 pyogrio==0.12.1
     # via geopandas
-pyparsing==3.3.1
-    # via matplotlib
 pyproj==3.7.2
     # via geopandas
 python-dateutil==2.9.0.post0
-    # via
-    #   matplotlib
-    #   pandas
+    # via pandas
 pytz==2025.2
     # via pandas
 requests==2.32.5

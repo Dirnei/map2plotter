@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Let users change single poster colours on top of a theme, from the command line and from the web interface, for every output format.
+Let users change single pen colours on top of a theme, from the command line and from the web interface.
 
 ## Requirements
 

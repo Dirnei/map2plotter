@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Let scripts and the web interface choose exactly where a poster is written and at what raster resolution, so previews can be produced without touching the `posters/` directory.
+Let scripts and the web interface choose exactly where a poster SVG is written, so previews can be produced without touching the `posters/` directory.
 
 ## Requirements
 

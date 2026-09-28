@@ -88,30 +88,6 @@ input[aria-invalid="true"] { border-color: var(--error); }
 .error:empty { display: none; }
 .hint { color: var(--muted); font-size: 0.85rem; margin: 8px 0 0; }
 
-.themes {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 8px;
-}
-
-.themes.disabled { opacity: 0.4; pointer-events: none; }
-
-.theme {
-  border: 2px solid var(--border);
-  border-radius: 6px;
-  padding: 6px;
-  background: var(--bg);
-  color: var(--text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.theme[aria-checked="true"] { border-color: var(--accent); }
-.theme .name { font-size: 0.85rem; font-weight: 600; }
-.theme .swatches { display: flex; height: 18px; border-radius: 3px; overflow: hidden; margin-top: 4px; }
-.theme .swatches span { flex: 1; }
-
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 16px 0; }
 
 button {
@@ -187,7 +163,6 @@ button:disabled { opacity: 0.5; cursor: default; }
 }
 
 .card .preview img { width: 100%; height: 100%; object-fit: contain; }
-.card .preview.doc { display: flex; align-items: center; justify-content: center; color: #666; }
 .card .name { font-size: 0.8rem; overflow-wrap: anywhere; }
 .card .meta { font-size: 0.75rem; color: var(--muted); }
 .card .links { display: flex; gap: 8px; font-size: 0.85rem; }
@@ -297,17 +272,6 @@ header, main, footer { max-width: 1280px; }
   box-shadow: 0 1px 6px rgb(0 0 0 / 0.15);
 }
 
-.stage img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: fill;
-}
-
-.stage img:not([src]) { visibility: hidden; }
-.stage.outdated img { opacity: 0.45; filter: grayscale(0.6); }
-
 .zoom-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .zoom-bar .hint { margin: 0 0 0 8px; }
 .zoom-level { min-width: 3.5em; text-align: center; font-variant-numeric: tabular-nums; font-size: 0.9rem; }
@@ -385,32 +349,7 @@ header, main, footer { max-width: 1280px; }
 .visibility .toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .visibility label.inline { margin-bottom: 2px; font-size: 0.85rem; }
 
-/* --- Workflow choice ------------------------------------------------------ */
-
-.modes {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 12px;
-}
-
-.mode-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px 14px 12px 40px;
-  border: 2px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
-  color: var(--text);
-  cursor: pointer;
-}
-
-.mode-card input { position: absolute; left: 14px; top: 15px; accent-color: var(--accent); }
-.mode-card:has(input:checked) { border-color: var(--accent); background: var(--panel); }
-.mode-card:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
-.mode-title { font-weight: 600; font-size: 1rem; }
-.mode-desc { color: var(--muted); font-size: 0.85rem; }
+/* --- Loaded location summary --------------------------------------------- */
 
 .mode-bar {
   display: flex;
@@ -423,19 +362,6 @@ header, main, footer { max-width: 1280px; }
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
-
-.mode-badge {
-  font-weight: 700;
-  font-size: 0.8rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  padding: 2px 10px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--accent-text);
-}
-
-.mode-badge[data-mode="plotter"] { background: #2f5d8a; }
 
 .hint.top { margin: 0 0 8px; }
 
@@ -486,11 +412,6 @@ header, main, footer { max-width: 1280px; }
 .pen-name { flex: 1; font-size: 0.9rem; }
 .pen .pen-visible { margin: 0; font-size: 0.8rem; color: var(--muted); }
 .pen.off .pen-name, .pen.off input[type="color"] { opacity: 0.4; }
-
-.png-size { font-size: 0.85rem; color: var(--muted); margin: 8px 0 0; }
-.png-size.warn { color: #9a6700; }
-.png-size.over { color: var(--error); }
-.png-size button { margin: 0 4px; }
 
 .preview-svg { position: absolute; inset: 0; }
 .preview-svg > svg { width: 100%; height: 100%; display: block; }

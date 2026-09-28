@@ -1,9 +1,7 @@
 {
   "name": "Neon Cyberpunk",
   "description": "Dark background with electric pink/cyan - bold night city vibes",
-  "bg": "#0D0D1A",
   "text": "#00FFFF",
-  "gradient_color": "#0D0D1A",
   "water": "#0A0A15",
   "parks": "#151525",
   "road_motorway": "#FF00FF",

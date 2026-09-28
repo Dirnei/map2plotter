@@ -10,7 +10,6 @@ from pathlib import Path
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 THEMES_DIR = PACKAGE_DIR / "data" / "themes"
-FONTS_DIR = PACKAGE_DIR / "data" / "fonts"
 STATIC_DIR = PACKAGE_DIR / "static"
 
 CACHE_DIR = Path(os.environ.get("CACHE_DIR", "cache"))

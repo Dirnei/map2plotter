@@ -1,6 +1,5 @@
-// map2plotter web UI: step 1 picks the workflow (print poster or pen plotter) and
-// loads a location (downloading the map data once); step 2 customizes it with live previews
-// rendered from the cached data, then exports.
+// map2plotter web UI: step 1 loads a location (downloading the map data once); step 2
+// customizes the plotter SVG with live previews rendered from the cached data, then exports.
 
 import {
   appendLog, applyValues, clearErrors, formValues, loadSaved, postJson, posterCard, save, showBanner, showErrors,
@@ -14,7 +13,6 @@ const locationForm = $("location-form");
 const customizeForm = $("customize-form");
 const locationBanner = $("location-banner");
 const customizeBanner = $("customize-banner");
-const themesEl = $("themes");
 const loadBtn = $("load");
 const toCustomizeBtn = $("to-customize");
 const loadStatusEl = $("load-status");
@@ -29,7 +27,6 @@ const resultsEl = $("results");
 const historyEl = $("history");
 const historyEmptyEl = $("history-empty");
 const stageEl = $("stage");
-const previewImg = $("preview-img");
 const previewBusy = $("preview-busy");
 const previewState = $("preview-state");
 const previewLog = $("preview-log");
@@ -40,18 +37,13 @@ const checkStatusEl = $("check-status");
 const serverStatusEl = $("server-status");
 
 const PREVIEW_DEBOUNCE = 500;  // ms
-// PNG limits, same as poster_size.py
-const MAX_PNG_PIXELS = 200_000_000;
-const MAX_PNG_SIDE = 65_535;
-const LARGE_PNG_PIXELS = 100_000_000;
-const MODE_NAMES = { print: "Print poster", plotter: "Pen plotter" };
 const PENS_KEY = "map2plotter-pens-v1";
 const PEN_ELEMENTS = [...LAYERS, ["text", "Text"]];
 const themeColors = new Map();  // theme id -> {key: colour}
 
 const state = {
   step: "location",
-  loaded: null,          // location values of the loaded map (incl. mode), or null
+  loaded: null,          // location values of the loaded map, or null
   loadingLocation: null,
   mainJob: null,         // running load or export
   previewJob: null,      // running preview
@@ -59,7 +51,7 @@ const state = {
   previewPending: false, // a preview was blocked by a load/export and should run afterwards
   mainEvents: null,
   previewEvents: null,
-  pens: {},              // plotter pen colour per element: {key: "#rrggbb"}
+  pens: {},              // pen colour per element: {key: "#rrggbb"}
   previewVersion: 0,     // guards against out-of-order inline SVG loads
 };
 
@@ -67,7 +59,6 @@ const editor = new Editor({
   overlay: $("overlay"),
   toolbar: $("editor-toolbar"),
   textToggles: $("text-toggles"),
-  layerToggles: $("layer-toggles"),
   onChange: () => {
     renderPens();
     schedulePreview(0);
@@ -90,17 +81,8 @@ function locationValues() {
   return values;
 }
 
-function currentMode() {
-  return state.loaded?.mode || "print";
-}
-
 function customizeValues() {
-  const values = { ...formValues(customizeForm), edits: editor.edits };
-  if (currentMode() === "plotter") {
-    values.format = "plotter";
-    values.colors = { ...state.pens };
-  }
-  return values;
+  return { ...formValues(customizeForm), edits: editor.edits, colors: { ...state.pens } };
 }
 
 const AREA_KEYS = ["city", "country", "latitude", "longitude", "distance", "width", "height"];
@@ -110,12 +92,7 @@ function sameArea(a, b) {
   return AREA_KEYS.every((k) => String(a?.[k] ?? "") === String(b?.[k] ?? ""));
 }
 
-/** The loaded map matches the form, workflow included: no need to load again. */
-function sameLoad(a, b) {
-  return sameArea(a, b) && (a?.mode || "print") === (b?.mode || "print");
-}
-
-// --- Steps and workflow -----------------------------------------------------------
+// --- Steps ------------------------------------------------------------------------
 
 function showStep(step) {
   state.step = step;
@@ -125,29 +102,13 @@ function showStep(step) {
     else btn.removeAttribute("aria-current");
   }
   document.querySelector('.step[data-step="customize"]').disabled = !state.loaded;
-  toCustomizeBtn.hidden = !state.loaded || !sameLoad(state.loaded, locationValues());
+  toCustomizeBtn.hidden = !state.loaded || !sameArea(state.loaded, locationValues());
   if (step === "customize") requestAnimationFrame(() => zoom.apply());
 }
 
-function updateSizeHint() {
-  const plotter = locationForm.elements.mode.value === "plotter";
-  $("size-hint").textContent = plotter
-    ? "Any size. The size sets the map area and the physical size of the SVG in mm."
-    : "Any size. The size sets the map area. SVG and PDF have no limit; PNG resolution is checked in the next step.";
-}
-
-/** Show only the Customize options of the loaded workflow. */
-function applyMode() {
-  const mode = currentMode();
-  for (const el of customizeForm.querySelectorAll("[data-mode]")) el.hidden = el.dataset.mode !== mode;
-  const plotter = mode === "plotter";
-  $("layer-toggles-panel").hidden = plotter;  // plotter: visibility lives in the pens list
-  $("all-themes-label").textContent = plotter
-    ? "Export one SVG per theme (uses each theme's colours, not the pens)"
-    : "Export one poster per theme";
+/** Place and size of the loaded map, shown above the Customize options. */
+function updateSummary() {
   const loc = state.loaded;
-  $("mode-badge").textContent = MODE_NAMES[mode];
-  $("mode-badge").dataset.mode = mode;
   $("mode-summary").textContent = loc
     ? `${loc.city}, ${loc.country} · ${loc.width} × ${loc.height} mm · ${loc.distance} m radius`
     : "";
@@ -155,8 +116,7 @@ function applyMode() {
 
 function setLoaded(location) {
   state.loaded = location;
-  applyMode();
-  updatePngInfo();
+  updateSummary();
   showStep(state.step);
 }
 
@@ -232,111 +192,25 @@ async function checkServers() {
 
 // --- Themes ------------------------------------------------------------------
 
+/** The base theme: file names and the --color overrides of exports are relative to it. */
 function selectTheme(id) {
   customizeForm.elements.theme.value = id;
-  for (const btn of themesEl.querySelectorAll(".theme")) {
-    btn.setAttribute("aria-checked", String(btn.dataset.id === id));
-  }
+  save(formValues(customizeForm));
 }
 
 async function loadThemes() {
   const res = await fetch("/api/themes");
   const themes = await res.json();
-  themesEl.replaceChildren();
   const penTheme = $("pen-theme");
   for (const theme of themes) {
     themeColors.set(theme.id, theme.colors);
-    penTheme.append(new Option(theme.name, theme.id));
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "theme";
-    btn.dataset.id = theme.id;
-    btn.setAttribute("role", "radio");
-    btn.title = theme.description;
-    const name = document.createElement("div");
-    name.className = "name";
-    name.textContent = theme.name;
-    const swatches = document.createElement("div");
-    swatches.className = "swatches";
-    const colors = [theme.colors.bg, theme.colors.water, theme.colors.parks, theme.colors.road_motorway,
-      theme.colors.road_primary, theme.colors.road_residential, theme.colors.text].filter(Boolean);
-    for (const color of colors) {
-      const s = document.createElement("span");
-      s.style.background = color;
-      swatches.append(s);
-    }
-    btn.append(name, swatches);
-    btn.addEventListener("click", () => {
-      selectTheme(theme.id);
-      customizeChanged();
-    });
-    themesEl.append(btn);
+    const option = new Option(theme.name, theme.id);
+    option.title = theme.description;
+    penTheme.append(option);
   }
-  selectTheme(customizeForm.elements.theme.value);
 }
 
-// --- PNG size (print) -------------------------------------------------------------
-
-function pngPixels(widthMm, heightMm, dpi) {
-  return [Math.round(widthMm / 25.4 * dpi), Math.round(heightMm / 25.4 * dpi)];
-}
-
-function pngFits(widthMm, heightMm, dpi) {
-  const [w, h] = pngPixels(widthMm, heightMm, dpi);
-  return w * h <= MAX_PNG_PIXELS && Math.max(w, h) <= MAX_PNG_SIDE;
-}
-
-function maxPngDpi(widthMm, heightMm) {
-  const areaIn2 = widthMm * heightMm / 25.4 ** 2;
-  let dpi = Math.floor(Math.min(Math.sqrt(MAX_PNG_PIXELS / areaIn2), MAX_PNG_SIDE * 25.4 / Math.max(widthMm, heightMm))) + 1;
-  while (dpi > 0 && !pngFits(widthMm, heightMm, dpi)) dpi--;
-  return dpi;
-}
-
-/** Show the PNG pixel size, warn when large, and block export over the limit. */
-function updatePngInfo() {
-  const info = $("png-size");
-  const png = currentMode() === "print" && customizeForm.elements.format.value === "png";
-  $("dpi-label").hidden = !png;
-  state.pngBlocked = false;
-  if (!png || !state.loaded) {
-    info.hidden = true;
-  } else {
-    const { width, height } = state.loaded;
-    const dpi = Number(customizeForm.elements.dpi.value) || 0;
-    const [w, h] = pngPixels(width, height, dpi);
-    const mp = (w * h / 1e6).toFixed(w * h < 1e7 ? 1 : 0);
-    info.hidden = false;
-    info.className = "png-size";
-    info.replaceChildren(`PNG: ${w.toLocaleString()} × ${h.toLocaleString()} px (${mp} MP).`);
-    if (dpi <= 0) {
-      info.className = "png-size over";
-      info.append(" Enter a dpi greater than 0.");
-      state.pngBlocked = true;
-    } else if (!pngFits(width, height, dpi)) {
-      const best = maxPngDpi(width, height);
-      info.className = "png-size over";
-      info.append(` Too large: PNG is limited to 200 MP and ${MAX_PNG_SIDE.toLocaleString()} px per side. `);
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "secondary small";
-      btn.textContent = `Use ${best} dpi`;
-      btn.addEventListener("click", () => {
-        customizeForm.elements.dpi.value = best;
-        save(formValues(customizeForm));
-        updatePngInfo();
-      });
-      info.append(btn, " or choose SVG/PDF (no limit).");
-      state.pngBlocked = true;
-    } else if (w * h > LARGE_PNG_PIXELS) {
-      info.className = "png-size warn";
-      info.append(" Large file: the export will be slow and needs a lot of memory.");
-    }
-  }
-  exportBtn.disabled = Boolean(state.mainJob) || state.pngBlocked;
-}
-
-// --- Pens (plotter) ------------------------------------------------------------
+// --- Pens -----------------------------------------------------------------------
 
 function savePens() {
   try {
@@ -414,7 +288,7 @@ function renderPens() {
   $("pen-count").textContent = `· ${count} pen${count === 1 ? "" : "s"}`;
 }
 
-/** Apply the pen colours to the inline plotter preview (no re-render needed). */
+/** Apply the pen colours to the inline preview SVG (no re-render needed). */
 function recolor() {
   for (const g of $("preview-svg").querySelectorAll("g[data-key]")) {
     const color = state.pens[g.dataset.key];
@@ -460,13 +334,12 @@ function finishMainJob(job) {
   state.mainJob = null;
   state.mainEvents = null;
   cancelBtn.hidden = true;
-  loadBtn.disabled = false;
-  updatePngInfo();
+  loadBtn.disabled = exportBtn.disabled = false;
   if (job.kind === "load") {
     setStatusText(loadStatusEl, job.status, "Loading…");
     if (job.status === "succeeded") {
       setLoaded(state.loadingLocation);
-      if (state.loaded.mode === "plotter") pensFromTheme(customizeForm.elements.theme.value);
+      pensFromTheme(customizeForm.elements.theme.value);
       showPreview(job.preview);
       zoom.fit();
       refreshLayout().then(() => showStep("customize"));
@@ -510,34 +383,20 @@ async function loadMap(e) {
 
 function showPreview(preview) {
   if (!preview) return;
+  // Inline, so pen colours can be applied without a re-render. White paper, no background.
   const inline = $("preview-svg");
-  if (preview.type === "svg") {
-    // Plotter preview inline, so pen colours can be applied without a re-render. White paper, no background.
-    const version = ++state.previewVersion;
-    fetch(preview.url).then((res) => res.text()).then((text) => {
-      if (version !== state.previewVersion) return;  // a newer preview is already shown
-      const svg = new DOMParser().parseFromString(text, "image/svg+xml").documentElement;
-      if (svg.nodeName !== "svg") return;
-      inline.replaceChildren(document.importNode(svg, true));
-      inline.hidden = false;
-      previewImg.hidden = true;
-      recolor();
-    });
-  } else {
-    state.previewVersion++;
-    inline.replaceChildren();
-    inline.hidden = true;
-    previewImg.hidden = false;
-    previewImg.src = preview.url;
-  }
+  const version = ++state.previewVersion;
+  fetch(preview.url).then((res) => res.text()).then((text) => {
+    if (version !== state.previewVersion) return;  // a newer preview is already shown
+    const svg = new DOMParser().parseFromString(text, "image/svg+xml").documentElement;
+    if (svg.nodeName !== "svg") return;
+    inline.replaceChildren(document.importNode(svg, true));
+    inline.hidden = false;
+    recolor();
+  });
   stageEl.classList.remove("outdated");
   previewState.classList.remove("error");
-  const format = customizeForm.elements.format.value;
-  previewState.textContent = preview.type === "svg"
-    ? "Plotter preview: the actual pen paths, sharp at any zoom"
-    : format === "png"
-      ? "Preview at reduced resolution; the PNG export is 300 dpi"
-      : `Raster preview of the same poster; the ${format.toUpperCase()} export is vector`;
+  previewState.textContent = "The actual pen paths of the SVG, sharp at any zoom";
 }
 
 function previewError(message) {
@@ -634,8 +493,7 @@ function customizeChanged(e) {
   // Pen colours are applied in the browser; pen visibility goes through the editor's edit list
   if (e?.target?.closest?.("#pens, .pen-presets")) return;
   save(formValues(customizeForm));
-  updatePngInfo();
-  if (["all_themes", "dpi"].includes(e?.target?.name)) return;  // export-only options
+  if (e?.target?.name === "all_themes") return;  // export-only option
   if (["display_city", "display_country", "country_label"].includes(e?.target?.name)) {
     clearTimeout(layoutTimer);
     layoutTimer = setTimeout(refreshLayout, PREVIEW_DEBOUNCE);
@@ -688,14 +546,12 @@ async function restore() {
   const session = await (await fetch("/api/session")).json();
   if (session.loaded) {
     setLoaded(session.location);
-    if (session.location.mode === "plotter") {
-      const saved = loadSavedPens();
-      if (saved) {
-        state.pens = saved;
-        renderPens();
-      } else {
-        pensFromTheme(customizeForm.elements.theme.value);
-      }
+    const saved = loadSavedPens();
+    if (saved) {
+      state.pens = saved;
+      renderPens();
+    } else {
+      pensFromTheme(customizeForm.elements.theme.value);
     }
     showPreview(session.preview);
     await refreshLayout();
@@ -722,7 +578,6 @@ function keyDown(e) {
 locationForm.addEventListener("submit", loadMap);
 locationForm.addEventListener("change", () => {
   updateCustomServerVisibility();
-  updateSizeHint();
   save(locationValues());
   showStep(state.step);
 });
@@ -762,9 +617,7 @@ $("copy").addEventListener("click", async () => {
 const saved = loadSaved();
 applyValues(locationForm, saved);
 applyValues(customizeForm, saved);
-if (saved.format === "plotter") customizeForm.elements.format.value = "png";  // plotter is a workflow now
 updateCustomServerVisibility();
-updateSizeHint();
-applyMode();
+updateSummary();
 Promise.all([loadThemes(), loadServers()]).then(restore);
 loadHistory();

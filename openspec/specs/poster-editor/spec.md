@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Let users adjust a poster by hand (erase parts of the map, move or hide text lines, hide layers). Edits are stored as data that every re-render and export applies again, so changing the theme, format or pen settings never loses them.
+Let users adjust a poster by hand (erase parts of the map, move or hide text lines, hide layers). Edits are stored as data that every re-render and export applies again, so changing the pen colours, theme or plotter settings never loses them.
 
 ## Requirements
 

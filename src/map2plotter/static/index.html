@@ -20,22 +20,6 @@
     <!-- Step 1: Location -->
     <form id="location-form" class="step-panel" data-panel="location" novalidate>
       <fieldset>
-        <legend>What are you making?</legend>
-        <div class="modes" role="radiogroup" aria-label="Workflow">
-          <label class="mode-card">
-            <input type="radio" name="mode" value="print" checked>
-            <span class="mode-title">Print poster</span>
-            <span class="mode-desc">Coloured, filled map with gradients and your font. Exported as PNG, SVG or PDF, at any size.</span>
-          </label>
-          <label class="mode-card">
-            <input type="radio" name="mode" value="plotter">
-            <span class="mode-title">Pen plotter</span>
-            <span class="mode-desc">Stroke-only SVG for a pen plotter: hatched or contour fills, one layer per pen colour, single-line text. Any size.</span>
-          </label>
-        </div>
-      </fieldset>
-
-      <fieldset>
         <legend>Location</legend>
         <div class="grid">
           <label>City *<input name="city" required placeholder="Paris"></label>
@@ -53,7 +37,7 @@
           <label>Width (mm)<input name="width" type="number" min="1" step="1" value="300"></label>
           <label>Height (mm)<input name="height" type="number" min="1" step="1" value="400"></label>
         </div>
-        <p class="hint" id="size-hint"></p>
+        <p class="hint">Any size. The SVG is drawn in real millimetres, stroke-only, one layer per pen colour.</p>
       </fieldset>
 
       <fieldset>
@@ -86,22 +70,15 @@
     <!-- Step 2: Customize -->
     <section id="customize" class="step-panel" data-panel="customize" hidden>
       <div class="mode-bar" id="mode-bar">
-        <span class="mode-badge" id="mode-badge"></span>
         <span id="mode-summary"></span>
         <button type="button" id="change-location" class="secondary small">Change</button>
       </div>
 
       <div class="customize-layout">
         <form id="customize-form" novalidate>
-          <fieldset data-mode="print">
-            <legend>Theme</legend>
-            <input type="hidden" name="theme" value="terracotta">
-            <div id="themes" class="themes" role="radiogroup" aria-label="Theme"></div>
-            <p class="error" data-error-for="theme"></p>
-          </fieldset>
-
-          <fieldset data-mode="plotter">
+          <fieldset>
             <legend>Pens <span id="pen-count" class="pen-count"></span></legend>
+            <input type="hidden" name="theme" value="terracotta">
             <p class="hint top">Pick a pen colour per element. Elements with the same colour share a pen and a layer in the SVG. Colour changes show at once, without re-rendering.</p>
             <div class="pen-presets">
               <label>Start from theme
@@ -111,36 +88,20 @@
             </div>
             <div id="pens" class="pens"></div>
             <p class="error" data-error-for="colors"></p>
+            <p class="error" data-error-for="theme"></p>
           </fieldset>
 
           <fieldset>
             <legend>Labels</legend>
             <div class="grid">
-              <label>Display city<input name="display_city" placeholder="e.g. 東京"></label>
-              <label>Display country<input name="display_country" placeholder="e.g. 日本"></label>
+              <label>Display city<input name="display_city" placeholder="e.g. Wien"></label>
+              <label>Display country<input name="display_country" placeholder="e.g. Österreich"></label>
               <label>Country label<input name="country_label" placeholder="override country text"></label>
-              <label data-mode="print">Font family<input name="font_family" placeholder="Google Font, e.g. Noto Sans JP"></label>
             </div>
-            <p class="hint" data-mode="plotter">Plotter text uses a single-line pen font. Accents are simplified, and scripts it cannot draw (e.g. CJK) are skipped.</p>
+            <p class="hint">Text uses a single-line pen font. Accents are simplified, and scripts it cannot draw (e.g. CJK) are skipped.</p>
           </fieldset>
 
-          <fieldset data-mode="print">
-            <legend>File format</legend>
-            <div class="grid">
-              <label>Format
-                <select name="format">
-                  <option value="png" selected>PNG</option>
-                  <option value="svg">SVG</option>
-                  <option value="pdf">PDF</option>
-                </select>
-              </label>
-              <label id="dpi-label">PNG resolution (dpi)<input name="dpi" type="number" min="1" step="1" value="300"></label>
-            </div>
-            <p id="png-size" class="png-size" hidden></p>
-            <p class="error" data-error-for="format"></p>
-          </fieldset>
-
-          <fieldset data-mode="plotter" id="plotter-options">
+          <fieldset id="plotter-options">
             <legend>Pen &amp; fills</legend>
             <div class="grid">
               <label>Pen width (mm)<input name="pen_width" type="number" min="0.01" step="0.05" value="0.3"></label>
@@ -167,7 +128,7 @@
 
           <fieldset>
             <legend>Export</legend>
-            <label class="inline"><input name="all_themes" type="checkbox"> <span id="all-themes-label">Export one poster per theme</span></label>
+            <label class="inline"><input name="all_themes" type="checkbox"> Export one SVG per theme</label>
             <div class="actions tight">
               <button type="button" id="back" class="secondary">Back to location</button>
               <button type="button" id="export">Export poster</button>
@@ -205,7 +166,6 @@
           <div class="viewport-wrap">
             <div id="viewport" class="viewport">
               <div id="stage" class="stage">
-                <img id="preview-img" alt="Poster preview">
                 <div id="preview-svg" class="preview-svg" hidden></div>
                 <svg id="overlay" class="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
               </div>
@@ -221,10 +181,6 @@
               <div>
                 <h3>Text</h3>
                 <div id="text-toggles"></div>
-              </div>
-              <div id="layer-toggles-panel">
-                <h3>Layers</h3>
-                <div id="layer-toggles"></div>
               </div>
             </div>
           </details>

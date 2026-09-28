@@ -1,9 +1,7 @@
 {
   "name": "Noir",
   "description": "Pure black background with white/gray roads - modern gallery aesthetic",
-  "bg": "#000000",
   "text": "#FFFFFF",
-  "gradient_color": "#000000",
   "water": "#0A0A0A",
   "parks": "#111111",
   "road_motorway": "#FFFFFF",

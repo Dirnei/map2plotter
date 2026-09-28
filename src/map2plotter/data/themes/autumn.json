@@ -1,9 +1,7 @@
 {
   "name": "Autumn",
   "description": "Burnt oranges, deep reds, golden yellows - seasonal warmth",
-  "bg": "#FBF7F0",
   "text": "#8B4513",
-  "gradient_color": "#FBF7F0",
   "water": "#D8CFC0",
   "parks": "#E8E0D0",
   "road_motorway": "#8B2500",

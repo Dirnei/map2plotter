@@ -1,9 +1,7 @@
 {
     "name": "Emerald City",
     "description": "Lush dark green aesthetic with mint accents",
-    "bg": "#062C22",
     "text": "#E3F9F1",
-    "gradient_color": "#062C22",
     "water": "#0D4536",
     "parks": "#0F523E",
     "road_motorway": "#4ADEB0",

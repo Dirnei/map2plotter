@@ -1,9 +1,7 @@
 {
   "name": "Gradient Roads",
   "description": "Smooth gradient from dark center to light edges with subtle features",
-  "bg": "#FFFFFF",
   "text": "#000000",
-  "gradient_color": "#FFFFFF",
   "water": "#D5D5D5",
   "parks": "#EFEFEF",
   "road_motorway": "#050505",

@@ -1,9 +1,7 @@
 {
   "name": "Ocean",
   "description": "Various blues and teals - perfect for coastal cities",
-  "bg": "#F0F8FA",
   "text": "#1A5F7A",
-  "gradient_color": "#F0F8FA",
   "water": "#B8D8E8",
   "parks": "#D8EAE8",
   "road_motorway": "#1A5F7A",

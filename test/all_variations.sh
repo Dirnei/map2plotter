@@ -50,30 +50,24 @@ uv run map2plotter -c "Bengaluru" -C "India" --display-city "The Garden City" --
 echo "Overriding latitude and longitude (central Bengaluru)"
 uv run map2plotter -c "Bengaluru" -C "India" -lat 12.9716 -long 77.5946
 
-# 4. Multilingual Support (from i18n section)
-echo "--- Multilingual Support (i18n) ---"
-echo "Kannada (Native script)"
-uv run map2plotter -c "Bengaluru" -C "India" -dc "ಬೆಂಗಳೂರು" -dC "ಭಾರत (India)" --font-family "Noto Sans Kannada"
+# 4. Non-Latin display names (the pen font skips characters it cannot draw, with a warning)
+echo "--- Non-Latin display names ---"
+echo "Kannada display name (skipped glyphs are reported)"
+uv run map2plotter -c "Bengaluru" -C "India" -dc "ಬೆಂಗಳೂರು" -dC "India"
 
-echo "Hindi (Devanagari script)"
-uv run map2plotter -c "Bengaluru" -C "India" -dc "बेंगलुरु" -dC "भारत" --font-family "Noto Sans Devanagari"
+# 5. Paper sizes
+echo "--- Paper sizes ---"
+echo "Square (200x200 mm)"
+uv run map2plotter -c "Bengaluru" -C "India" --width 200 --height 200
 
-# 5. Resolution Guide Variations
-echo "--- Resolution Guide Variations ---"
-echo "Instagram Post (91.4x91.4 mm)"
-uv run map2plotter -c "Bengaluru" -C "India" --width 91.4 --height 91.4
+echo "Landscape (420x297 mm)"
+uv run map2plotter -c "Bengaluru" -C "India" --width 420 --height 297
 
-echo "Mobile Wallpaper (91.4x162.6 mm)"
-uv run map2plotter -c "Bengaluru" -C "India" --width 91.4 --height 162.6
-
-echo "HD Wallpaper (162.6x91.4 mm)"
-uv run map2plotter -c "Bengaluru" -C "India" --width 162.6 --height 91.4
-
-echo "4K Wallpaper (325.1x182.9 mm)"
-uv run map2plotter -c "Bengaluru" -C "India" --width 325.1 --height 182.9
-
-echo "A4 Print (210x297 mm)"
+echo "A4 (210x297 mm)"
 uv run map2plotter -c "Bengaluru" -C "India" --width 210 --height 297
+
+echo "A3 (297x420 mm)"
+uv run map2plotter -c "Bengaluru" -C "India" --width 297 --height 420
 
 # 6. Distance Guide Variations
 echo "--- Distance Guide Variations ---"
@@ -86,13 +80,16 @@ uv run map2plotter -c "Bengaluru" -C "India" -d 10000
 echo "Large metro view (default 18000m)"
 uv run map2plotter -c "Bengaluru" -C "India" -d 18000
 
-# 7. Pen Plotter Output
-echo "--- Pen Plotter Output ---"
-echo "A3 plotter SVG, 0.3mm pen"
-uv run map2plotter -c "Bengaluru" -C "India" -d 5000 --format plotter --width 297 --height 420 --pen-width 0.3
+# 7. Pens and fills
+echo "--- Pens and fills ---"
+echo "0.5mm pen with sparse hatching"
+uv run map2plotter -c "Bengaluru" -C "India" -d 5000 --pen-width 0.5 --hatch-spacing 1.5
 
-echo "Plotter SVG, 0.5mm pen with sparse hatching"
-uv run map2plotter -c "Bengaluru" -C "India" -d 5000 --format plotter --width 300 --height 400 --pen-width 0.5 --hatch-spacing 1.5
+echo "Concentric, outlined water and sparse parks"
+uv run map2plotter -c "Bengaluru" -C "India" -d 5000 --water-fill concentric --water-outline --parks-spacing 2
+
+echo "Pen colour override"
+uv run map2plotter -c "Bengaluru" -C "India" -d 5000 --color water=#1f5fa8
 
 # 8. Utility flags
 echo "--- Utility Flags ---"

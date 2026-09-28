@@ -43,10 +43,9 @@ export class Editor {
    * @param {SVGSVGElement} opts.overlay
    * @param {HTMLElement} opts.toolbar
    * @param {HTMLElement} opts.textToggles
-   * @param {HTMLElement} opts.layerToggles
    * @param {function} opts.onChange  called with the edit list after every committed change
    */
-  constructor({ overlay, toolbar, textToggles, layerToggles, onChange }) {
+  constructor({ overlay, toolbar, textToggles, onChange }) {
     this.overlay = overlay;
     this.toolbar = toolbar;
     this.onChange = onChange;
@@ -80,7 +79,6 @@ export class Editor {
       next.text[key] = entry;
       this.commit(next);
     });
-    this.layerInputs = this.buildToggles(layerToggles, LAYERS, (key, visible) => this.setLayerVisible(key, visible));
 
     overlay.addEventListener("pointerdown", (e) => this.pointerDown(e));
     overlay.addEventListener("pointermove", (e) => this.pointerMove(e));
@@ -347,9 +345,6 @@ export class Editor {
     }
 
     for (const [key, input] of Object.entries(this.textInputs)) input.checked = !this.edits.text[key]?.hidden;
-    for (const [key, input] of Object.entries(this.layerInputs)) {
-      input.checked = !this.edits.hidden_layers.includes(key);
-    }
     this.buttons.delete.disabled = this.selected === null;
     this.buttons.undo.disabled = !this.undoStack.length;
     this.buttons.redo.disabled = !this.redoStack.length;

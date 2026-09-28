@@ -1,4 +1,4 @@
-# map2plotter: web interface at http://localhost:8000/
+# map2plotter: web interface at http://localhost:8001/
 #
 #   docker compose up -d                  # build (first time) and start
 #   docker compose logs -f                # follow logs

@@ -35,13 +35,105 @@ ROAD_CLASSES = [
     ("road_default", None, 0.4),
 ]
 
-# Text anchors as fractions of the page (x, y measured from the bottom), matching the raster layout
+# Text anchors as fractions of the page (x, y measured from the bottom)
 CITY_Y = 0.14
 COUNTRY_Y = 0.10
 COORDS_Y = 0.07
 DIVIDER_Y = 0.125
 DIVIDER_X = (0.4, 0.6)
 ATTRIBUTION_POS = (0.98, 0.02)
+
+# Base font sizes in points (at the reference size REFERENCE_SIZE_MM)
+BASE_MAIN = 60
+BASE_SUB = 22
+BASE_COORDS = 14
+BASE_ATTR = 8
+
+
+def is_latin_script(text):
+    """
+    Check if text is primarily Latin script.
+    Used to determine if letter-spacing should be applied to city names.
+
+    :param text: Text to analyze
+    :return: True if text is primarily Latin script, False otherwise
+    """
+    if not text:
+        return True
+
+    latin_count = 0
+    total_alpha = 0
+
+    for char in text:
+        if char.isalpha():
+            total_alpha += 1
+            # Latin Unicode ranges:
+            # - Basic Latin: U+0000 to U+007F
+            # - Latin-1 Supplement: U+0080 to U+00FF
+            # - Latin Extended-A: U+0100 to U+017F
+            # - Latin Extended-B: U+0180 to U+024F
+            if ord(char) < 0x250:
+                latin_count += 1
+
+    # If no alphabetic characters, default to Latin (numbers, symbols, etc.)
+    if total_alpha == 0:
+        return True
+
+    # Consider it Latin if >80% of alphabetic characters are Latin
+    return (latin_count / total_alpha) > 0.8
+
+
+def format_city_title(display_city, scale_factor):
+    """
+    Format the city name and pick its font size.
+
+    Latin scripts are uppercased with letter spacing (e.g. "P  A  R  I  S");
+    other scripts are kept as-is. Long names get a smaller font to avoid truncation.
+
+    Returns:
+        (formatted city text, font size in points)
+    """
+    if is_latin_script(display_city):
+        spaced_city = "  ".join(list(display_city.upper()))
+    else:
+        spaced_city = display_city
+
+    base_adjusted_main = BASE_MAIN * scale_factor
+    city_char_count = len(display_city)
+
+    # Heuristic: If length is > 10, start reducing.
+    if city_char_count > 10:
+        length_factor = 10 / city_char_count
+        adjusted_font_size = max(base_adjusted_main * length_factor, 10 * scale_factor)
+    else:
+        adjusted_font_size = base_adjusted_main
+
+    return spaced_city, adjusted_font_size
+
+
+def format_coordinates(lat, lon):
+    """Format a lat/lon pair for display, e.g. '48.8566° N / 2.3522° E'."""
+    coords = (
+        f"{lat:.4f}° N / {lon:.4f}° E"
+        if lat >= 0
+        else f"{abs(lat):.4f}° S / {lon:.4f}° E"
+    )
+    if lon < 0:
+        coords = coords.replace("E", "W")
+    return coords
+
+
+def poster_texts(display_city, display_country, lat, lon, width_mm, height_mm):
+    """The poster's text lines as {key: (text, size_pt)}, scaled to the page size."""
+    scale_factor = min(width_mm, height_mm) / REFERENCE_SIZE_MM
+    spaced_city, city_size = format_city_title(display_city, scale_factor)
+    return {
+        "city": (spaced_city, city_size),
+        "country": (display_country.upper(), BASE_SUB * scale_factor),
+        "coords": (format_coordinates(lat, lon), BASE_COORDS * scale_factor),
+        "attribution": ("© OpenStreetMap contributors", BASE_ATTR),
+    }
+
 
 # Hershey font metrics (font units, y pointing down)
 HERSHEY_CAP = -12

@@ -34,7 +34,6 @@ from pydantic import BaseModel, ValidationError, field_validator
 from . import colors as poster_colors
 from . import edits as poster_edits
 from . import overpass, paths
-from . import size as poster_size
 
 POSTERS_DIR = paths.POSTERS_DIR
 THEMES_DIR = paths.THEMES_DIR
@@ -42,9 +41,7 @@ STATIC_DIR = paths.STATIC_DIR
 CLI_COMMAND = [sys.executable, "-u", "-m", "map2plotter"]
 WORK_DIR = paths.CACHE_DIR / "web"
 
-POSTER_TYPES = {".png": "image/png", ".svg": "image/svg+xml", ".pdf": "application/pdf"}
-PREVIEW_MAX_MM = 500  # Raster previews of larger posters are rendered scaled down (same look)
-PREVIEW_PIXELS = 2000  # Long side of PNG previews (sharp enough to zoom in a little)
+POSTER_TYPES = {".svg": "image/svg+xml"}  # Plotter SVGs are the only output
 PING_INTERVAL = 15  # seconds between SSE keep-alive comments
 KILL_TIMEOUT = 5  # seconds to wait after terminate before killing
 FILL_MODES = ("hatch", "concentric")
@@ -62,9 +59,8 @@ def _blank_to_none(value):
 
 
 class LocationConfig(BaseModel):
-    """Step 1: the workflow and what map data to load. Same defaults as the CLI."""
+    """Step 1: what map data to load. Same defaults as the CLI."""
 
-    mode: Literal["print", "plotter"] = "print"  # print poster (png/svg/pdf) or pen plotter
     city: str = ""
     country: str = ""
     latitude: Optional[str] = None
@@ -93,9 +89,6 @@ class CustomizeConfig(BaseModel):
     country_label: Optional[str] = None
     display_city: Optional[str] = None
     display_country: Optional[str] = None
-    font_family: Optional[str] = None
-    format: Literal["png", "svg", "pdf", "plotter"] = "png"
-    dpi: int = 300  # PNG export resolution
     pen_width: float = 0.3
     hatch_spacing: Optional[float] = None
     water_fill: Literal["hatch", "concentric"] = "hatch"
@@ -103,10 +96,10 @@ class CustomizeConfig(BaseModel):
     water_spacing: Optional[float] = None
     parks_spacing: Optional[float] = None
     water_outline: bool = False
-    colors: Optional[dict] = None  # {theme key: '#rrggbb'} overrides (pen colours)
+    colors: Optional[dict] = None  # {pen colour key: '#rrggbb'} overrides
     edits: Optional[dict] = None
 
-    @field_validator("country_label", "display_city", "display_country", "font_family", mode="before")
+    @field_validator("country_label", "display_city", "display_country", mode="before")
     @classmethod
     def _blank(cls, value):
         return _blank_to_none(value)
@@ -134,7 +127,7 @@ def get_themes():
             continue
         colors = {
             key: value for key, value in data.items()
-            if isinstance(value, str) and value.startswith("#")
+            if key in poster_colors.THEME_COLOR_KEYS and isinstance(value, str) and value.startswith("#")
         }
         themes.append({
             "id": path.stem,
@@ -196,10 +189,10 @@ def validate_location(data):
     return (None if errors else config), errors
 
 
-def validate_customize(data, location=None, export=False):
+def validate_customize(data):
     """
-    Validate the Customize step for the loaded location's workflow, if given.
-    The PNG pixel limit only applies to exports (previews are rendered scaled down).
+    Validate the Customize step. Fields of the removed print workflow
+    (mode, format, dpi, font_family) are ignored.
 
     Returns:
         (CustomizeConfig or None, {field: error message})
@@ -208,13 +201,7 @@ def validate_customize(data, location=None, export=False):
     if config is None:
         return None, errors
 
-    if location is not None:
-        if location.mode == "plotter":
-            config.format = "plotter"
-        elif config.format == "plotter":
-            errors["format"] = "Pen plotter output needs the pen plotter workflow (choose it in the Location step)"
-
-    for name in ("pen_width", "hatch_spacing", "water_spacing", "parks_spacing", "dpi"):
+    for name in ("pen_width", "hatch_spacing", "water_spacing", "parks_spacing"):
         value = getattr(config, name)
         if value is not None and value <= 0:
             errors[name] = "Must be greater than 0"
@@ -222,7 +209,7 @@ def validate_customize(data, location=None, export=False):
     if not config.all_themes and config.theme not in {t["id"] for t in get_themes()}:
         errors["theme"] = f"Theme '{config.theme}' not found"
 
-    if config.format == "plotter" and "pen_width" not in errors:
+    if "pen_width" not in errors:
         for name, label in (
             ("hatch_spacing", "Hatch spacing"), ("water_spacing", "Water spacing"), ("parks_spacing", "Parks spacing"),
         ):
@@ -231,11 +218,6 @@ def validate_customize(data, location=None, export=False):
                 value = config.pen_width
             if value is not None and value < config.pen_width and name not in errors:
                 errors[name] = f"{label} must not be less than the pen width"
-
-    if export and location is not None and config.format == "png" and "dpi" not in errors:
-        error = poster_size.png_limit_error(location.width, location.height, config.dpi)
-        if error:
-            errors["dpi"] = error[0].upper() + error[1:]
 
     if config.colors:
         try:
@@ -262,24 +244,27 @@ def _opt(flag, value):
     return [f"{flag}={value}"] if value.startswith("-") else [flag, value]
 
 
-def location_args(loc, width=None, height=None):
-    """CLI arguments selecting the map area (size may be overridden, e.g. for a scaled preview)."""
+def location_args(loc):
+    """CLI arguments selecting the map area and poster size."""
     args = _opt("--city", loc.city) + _opt("--country", loc.country)
     if loc.latitude is not None and loc.longitude is not None:
         args += _opt("--latitude", loc.latitude) + _opt("--longitude", loc.longitude)
     args += ["--distance", str(loc.distance)]
-    args += ["--width", _num(width or loc.width), "--height", _num(height or loc.height)]
+    args += ["--width", _num(loc.width), "--height", _num(loc.height)]
     args += ["--overpass-url", loc.overpass_url]
     return args
 
 
 def theme_colors(theme_id):
-    """Colour values of a theme file ({} if it cannot be read)."""
+    """Pen colour values of a theme file ({} if it cannot be read)."""
     try:
         data = json.loads((THEMES_DIR / f"{theme_id}.json").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
-    return {k: v.lower() for k, v in data.items() if isinstance(v, str) and v.startswith("#")}
+    return {
+        k: v.lower() for k, v in data.items()
+        if k in poster_colors.THEME_COLOR_KEYS and isinstance(v, str) and v.startswith("#")
+    }
 
 
 def color_args(c, all_themes=False):
@@ -293,9 +278,8 @@ def color_args(c, all_themes=False):
     ]
 
 
-def customize_args(c, fmt=None, all_themes=None, export=False):
-    """CLI arguments for the look of the poster (empty options omitted; --dpi only for PNG exports)."""
-    fmt = fmt or c.format
+def customize_args(c, all_themes=None):
+    """CLI arguments for the look of the poster (empty options and defaults omitted)."""
     all_themes = c.all_themes if all_themes is None else all_themes
     args = ["--all-themes"] if all_themes else _opt("--theme", c.theme)
     args += color_args(c, all_themes)
@@ -303,40 +287,24 @@ def customize_args(c, fmt=None, all_themes=None, export=False):
         ("--country-label", c.country_label),
         ("--display-city", c.display_city),
         ("--display-country", c.display_country),
-        ("--font-family", c.font_family),
     ):
         if value:
             args += _opt(flag, value)
-    args += ["--format", fmt]
-    if export and fmt == "png" and c.dpi != 300:
-        args += ["--dpi", str(c.dpi)]
-    if fmt == "plotter":
-        args += ["--pen-width", _num(c.pen_width)]
-        for flag, value in (
-            ("--hatch-spacing", c.hatch_spacing),
-            ("--water-spacing", c.water_spacing),
-            ("--parks-spacing", c.parks_spacing),
-        ):
-            if value is not None:
-                args += [flag, _num(value)]
-        if c.water_fill != "hatch":
-            args += ["--water-fill", c.water_fill]
-        if c.parks_fill != "hatch":
-            args += ["--parks-fill", c.parks_fill]
-        if c.water_outline:
-            args.append("--water-outline")
+    args += ["--pen-width", _num(c.pen_width)]
+    for flag, value in (
+        ("--hatch-spacing", c.hatch_spacing),
+        ("--water-spacing", c.water_spacing),
+        ("--parks-spacing", c.parks_spacing),
+    ):
+        if value is not None:
+            args += [flag, _num(value)]
+    if c.water_fill != "hatch":
+        args += ["--water-fill", c.water_fill]
+    if c.parks_fill != "hatch":
+        args += ["--parks-fill", c.parks_fill]
+    if c.water_outline:
+        args.append("--water-outline")
     return args
-
-
-def preview_dpi(width, height):
-    """DPI that gives PNG previews about PREVIEW_PIXELS on the long side."""
-    return max(30, min(150, round(PREVIEW_PIXELS / (max(width, height) / 25.4))))
-
-
-def preview_size(loc):
-    """Preview page size: the poster size, scaled down (same aspect) to the raster limit if needed."""
-    scale = min(1.0, PREVIEW_MAX_MM / max(loc.width, loc.height))
-    return loc.width * scale, loc.height * scale
 
 
 def display_command(args):
@@ -491,7 +459,7 @@ async def start_job(kind, args, on_finish=None):
         )
         CURRENT_JOB = job
         env = {
-            **os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1", "MPLBACKEND": "Agg",
+            **os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1",
             "CACHE_DIR": str(paths.CACHE_DIR.resolve()),  # Same cache as the server, whatever the CLI's cwd
         }
         try:
@@ -640,7 +608,7 @@ def session_state():
 
 @app.post("/api/load")
 async def load(request: Request):
-    """Download (or read from the cache) the map data for a location and render a quick preview."""
+    """Download (or read from the cache) the map data for a location and render the preview SVG."""
     data = await _json_body(request)
     loc, errors = validate_location(data)
     theme = data.get("theme") or "terracotta"
@@ -649,15 +617,8 @@ async def load(request: Request):
     if errors:
         return _invalid(errors)
 
-    if loc.mode == "plotter":
-        rendered = SESSION.dir / "rendering.svg"
-        args = location_args(loc) + _opt("--theme", theme) + ["--format", "plotter", "--output", str(rendered)]
-    else:
-        width, height = preview_size(loc)
-        rendered = SESSION.dir / "rendering.png"
-        args = location_args(loc, width, height) + _opt("--theme", theme) + [
-            "--format", "png", "--output", str(rendered), "--dpi", str(preview_dpi(width, height)),
-        ]
+    rendered = SESSION.dir / "rendering.svg"
+    args = location_args(loc) + _opt("--theme", theme) + ["--output", str(rendered)]
 
     def loaded():
         SESSION.location, SESSION.loaded = loc, True
@@ -672,18 +633,12 @@ async def preview(request: Request):
     """Re-render the preview from the cached map data (never downloads)."""
     data = await _json_body(request)
     loc = _require_loaded()
-    custom, errors = validate_customize(data, loc)
+    custom, errors = validate_customize(data)
     if errors:
         return _invalid(errors)
 
-    if custom.format == "plotter":
-        rendered = SESSION.dir / "rendering.svg"
-        args = location_args(loc) + customize_args(custom, all_themes=False)
-    else:
-        width, height = preview_size(loc)
-        rendered = SESSION.dir / "rendering.png"
-        args = location_args(loc, width, height) + customize_args(custom, fmt="png", all_themes=False)
-        args += ["--dpi", str(preview_dpi(width, height))]
+    rendered = SESSION.dir / "rendering.svg"
+    args = location_args(loc) + customize_args(custom, all_themes=False)
     args += ["--cache-only", "--output", str(rendered)] + _write_edits(custom, "edits.json")
     job = await start_job("preview", args, _preview_finisher(rendered))
     return job.summary()
@@ -694,10 +649,10 @@ async def export(request: Request):
     """Render the final poster(s) into posters/ from the cached map data."""
     data = await _json_body(request)
     loc = _require_loaded()
-    custom, errors = validate_customize(data, loc, export=True)
+    custom, errors = validate_customize(data)
     if errors:
         return _invalid(errors)
-    args = location_args(loc) + customize_args(custom, export=True) + ["--cache-only"]
+    args = location_args(loc) + customize_args(custom) + ["--cache-only"]
     args += _write_edits(custom, "edits-export.json")
     job = await start_job("export", args)
     return job.summary()
@@ -718,23 +673,15 @@ async def layout(request: Request):
     """Default positions (page mm) of the poster's text lines, for the editor's drag handles."""
     data = await _json_body(request)
     loc = _require_loaded()
-    from . import plotter
-    from . import poster as cmp  # heavy import (osmnx, matplotlib): only when needed
+    from . import plotter  # shapely/scipy: only when needed
 
     city = _blank_to_none(data.get("display_city")) or loc.city
     country = _blank_to_none(data.get("display_country")) or _blank_to_none(data.get("country_label")) or loc.country
     if loc.latitude is not None and loc.longitude is not None:
-        coords = cmp.format_coordinates(parse(loc.latitude), parse(loc.longitude))
+        lat, lon = parse(loc.latitude), parse(loc.longitude)
     else:
-        coords = cmp.format_coordinates(0.0, 0.0)  # Same width as real coordinates
-    scale = min(loc.width, loc.height) / plotter.REFERENCE_SIZE_MM
-    spaced_city, city_size = cmp.format_city_title(city, scale)
-    texts = {
-        "city": (spaced_city, city_size),
-        "country": (country.upper(), cmp.BASE_SUB * scale),
-        "coords": (coords, cmp.BASE_COORDS * scale),
-        "attribution": ("© OpenStreetMap contributors", cmp.BASE_ATTR),
-    }
+        lat, lon = 0.0, 0.0  # Same text width as real coordinates
+    texts = plotter.poster_texts(city, country, lat, lon, loc.width, loc.height)
     boxes = plotter.text_boxes(texts, loc.width, loc.height)
     return {"width": loc.width, "height": loc.height, "boxes": boxes}
 

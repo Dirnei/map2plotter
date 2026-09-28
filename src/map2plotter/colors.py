@@ -7,9 +7,9 @@ shared by the CLI and the web interface.
 
 import re
 
-# Theme colour keys that may be overridden
+# Pen colour keys of a theme, which may be overridden (other theme keys are ignored)
 THEME_COLOR_KEYS = (
-    "bg", "text", "gradient_color", "water", "parks",
+    "text", "water", "parks",
     "road_motorway", "road_primary", "road_secondary", "road_tertiary", "road_residential", "road_default",
 )
 _HEX_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
